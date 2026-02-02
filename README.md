@@ -136,6 +136,19 @@ android-reverse-engineering-skill/
 - [dex2jar — DEX to JAR converter](https://github.com/pxb1988/dex2jar)
 - [apktool — Android resource decoder](https://apktool.org/)
 
+## Disclaimer
+
+This plugin is provided strictly for **lawful purposes**, including but not limited to:
+
+- Security research and authorized penetration testing
+- Interoperability analysis permitted under applicable law (e.g., EU Directive 2009/24/EC, US DMCA §1201(f))
+- Malware analysis and incident response
+- Educational use and CTF competitions
+
+**You are solely responsible** for ensuring that your use of this tool complies with all applicable laws, regulations, and terms of service. Unauthorized reverse engineering of software you do not own or do not have permission to analyze may violate intellectual property laws and computer fraud statutes in your jurisdiction.
+
+The authors disclaim any liability for misuse of this tool.
+
 ## License
 
 Apache 2.0 — see [LICENSE](LICENSE)
