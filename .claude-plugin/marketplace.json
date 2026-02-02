@@ -1,0 +1,25 @@
+{
+  "name": "android-reverse-engineering-skill",
+  "owner": {
+    "name": "Simone Avogadro"
+  },
+  "metadata": {
+    "description": "Claude Code plugins for Android reverse engineering",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "android-reverse-engineering",
+      "source": "./plugins/android-reverse-engineering",
+      "description": "Decompile Android APK/JAR/AAR with jadx, trace call flows through libraries, and document extracted APIs.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Simone Avogadro"
+      },
+      "repository": "https://github.com/simonea/android-reverse-engineering-skill",
+      "license": "Apache-2.0",
+      "keywords": ["android", "reverse-engineering", "apk", "jadx", "decompile", "api-extraction"],
+      "category": "security"
+    }
+  ]
+}

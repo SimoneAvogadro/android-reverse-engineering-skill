@@ -1,13 +1,13 @@
-# Android Reverse Engineering — Claude Code Plugin
+# Android Reverse Engineering & API Extraction — Claude Code Plugin
 
-A Claude Code plugin for decompiling Android APK/XAPK/JAR/AAR files with jadx, tracing call flows through application code, and documenting extracted APIs.
+A Claude Code plugin that decompiles Android APK/XAPK/JAR/AAR files and **extracts the HTTP APIs** used by the app — Retrofit endpoints, OkHttp calls, hardcoded URLs, authentication patterns — so you can document and reproduce them without the original source code.
 
 ## What it does
 
 - **Decompiles** APK, XAPK, JAR, and AAR files using jadx and Fernflower/Vineflower (single engine or side-by-side comparison)
-- **Analyzes** app structure: manifest, packages, architecture patterns
+- **Extracts and documents APIs**: Retrofit endpoints, OkHttp calls, hardcoded URLs, auth headers and tokens
 - **Traces call flows** from Activities/Fragments through ViewModels and repositories down to HTTP calls
-- **Extracts and documents APIs**: Retrofit endpoints, OkHttp calls, hardcoded URLs, auth patterns
+- **Analyzes** app structure: manifest, packages, architecture patterns
 - **Handles obfuscated code**: strategies for navigating ProGuard/R8 output
 
 ## Requirements
