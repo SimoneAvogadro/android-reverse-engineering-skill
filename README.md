@@ -29,7 +29,7 @@ See `plugins/android-reverse-engineering/skills/android-reverse-engineering/refe
 Inside Claude Code, run:
 
 ```
-/plugin marketplace add simonea/android-reverse-engineering-skill
+/plugin marketplace add SimoneAvogadro/android-reverse-engineering-skill
 /plugin install android-reverse-engineering@android-reverse-engineering-skill
 ```
 
@@ -38,7 +38,7 @@ The plugin will be permanently available in all future sessions.
 ### From a local clone
 
 ```bash
-git clone https://github.com/simonea/android-reverse-engineering-skill.git
+git clone https://github.com/SimoneAvogadro/android-reverse-engineering-skill.git
 ```
 
 Then in Claude Code:

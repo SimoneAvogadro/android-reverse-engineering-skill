@@ -16,7 +16,7 @@
       "author": {
         "name": "Simone Avogadro"
       },
-      "repository": "https://github.com/simonea/android-reverse-engineering-skill",
+      "repository": "https://github.com/SimoneAvogadro/android-reverse-engineering-skill",
       "license": "Apache-2.0",
       "keywords": ["android", "reverse-engineering", "apk", "jadx", "decompile", "api-extraction"],
       "category": "security"
