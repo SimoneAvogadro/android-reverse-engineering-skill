@@ -1,6 +1,6 @@
-# Android Reverse Engineering & API Extraction — Claude Code Plugin
+# Android Reverse Engineering & API Extraction — Claude Code skill
 
-A Claude Code plugin that decompiles Android APK/XAPK/JAR/AAR files and **extracts the HTTP APIs** used by the app — Retrofit endpoints, OkHttp calls, hardcoded URLs, authentication patterns — so you can document and reproduce them without the original source code.
+A Claude Code skill that decompiles Android APK/XAPK/JAR/AAR files and **extracts the HTTP APIs** used by the app — Retrofit endpoints, OkHttp calls, hardcoded URLs, authentication patterns — so you can document and reproduce them without the original source code.
 
 ## What it does
 
@@ -33,7 +33,7 @@ Inside Claude Code, run:
 /plugin install android-reverse-engineering@android-reverse-engineering-skill
 ```
 
-The plugin will be permanently available in all future sessions.
+The skill will be permanently available in all future sessions.
 
 ### From a local clone
 
