@@ -22,7 +22,7 @@ If the user provided a file path as an argument, use that. Otherwise, ask the us
 Run the dependency check:
 
 ```bash
-bash skills/android-reverse-engineering/scripts/check-deps.sh
+bash ${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/check-deps.sh
 ```
 
 Parse the output looking for `INSTALL_REQUIRED:` and `INSTALL_OPTIONAL:` lines.
@@ -30,8 +30,8 @@ Parse the output looking for `INSTALL_REQUIRED:` and `INSTALL_OPTIONAL:` lines.
 **If required dependencies are missing**, install them one by one:
 
 ```bash
-bash skills/android-reverse-engineering/scripts/install-dep.sh java
-bash skills/android-reverse-engineering/scripts/install-dep.sh jadx
+bash ${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/install-dep.sh java
+bash ${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/install-dep.sh jadx
 ```
 
 The install script auto-detects the OS and installs without sudo when possible (user-local install to `~/.local/`). If sudo is needed, it will prompt — if the user declines or sudo is unavailable, the script prints exact manual instructions (exit code 2). Show those instructions to the user and stop.
@@ -46,23 +46,23 @@ Run the decompile script on the target file. Choose the engine based on the inpu
 
 - **APK or XAPK** → use jadx first (handles resources natively; XAPK is auto-extracted):
   ```bash
-  bash skills/android-reverse-engineering/scripts/decompile.sh <file>
+  bash ${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/decompile.sh <file>
   ```
 
 - **JAR/AAR** and Fernflower is available → prefer fernflower for better Java output:
   ```bash
-  bash skills/android-reverse-engineering/scripts/decompile.sh --engine fernflower <file>
+  bash ${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/decompile.sh --engine fernflower <file>
   ```
 
 - **If jadx output has warnings** or the user wants the best quality → run both and compare:
   ```bash
-  bash skills/android-reverse-engineering/scripts/decompile.sh --engine both <file>
+  bash ${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/decompile.sh --engine both <file>
   ```
 
 For obfuscated apps (if the user mentions it or you detect single-letter package names), add `--deobf`:
 
 ```bash
-bash skills/android-reverse-engineering/scripts/decompile.sh --deobf <file>
+bash ${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/decompile.sh --deobf <file>
 ```
 
 ### Step 4: Analyze structure
@@ -83,4 +83,4 @@ Tell the user what they can do next:
 - **Analyze specific classes**: "Point me to a specific class or feature to analyze"
 - **Re-decompile with Fernflower**: If jadx output has warnings, offer to re-run with `--engine both` for comparison
 
-Refer to the full skill documentation in `skills/android-reverse-engineering/SKILL.md` for the complete workflow.
+Refer to the full skill documentation in `${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/SKILL.md` for the complete workflow.
