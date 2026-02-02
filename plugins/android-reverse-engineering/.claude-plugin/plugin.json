@@ -1,0 +1,10 @@
+{
+  "name": "android-reverse-engineering",
+  "version": "1.0.0",
+  "description": "Decompile Android APK/JAR/AAR with jadx, trace call flows through libraries, and document extracted APIs.",
+  "author": {
+    "name": "simonea"
+  },
+  "repository": "https://github.com/simonea/android-reverse-engineering-skill",
+  "license": "Apache-2.0"
+}
