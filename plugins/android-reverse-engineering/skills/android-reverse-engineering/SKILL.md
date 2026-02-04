@@ -1,4 +1,9 @@
 ---
+name: android-reverse-engineering
+description: "Decompile Android APK/XAPK/JAR/AAR files and extract/document HTTP APIs (Retrofit/OkHttp/URLs) with a repeatable workflow."
+version: 1.0.0
+author: "SimoneAvogadro (fork: gmh5225)"
+tags: [android, reverse-engineering, jadx, fernflower, vineflower, dex2jar, okhttp, retrofit, api]
 trigger: decompile APK|decompile XAPK|reverse engineer Android|extract API|analyze Android|jadx|fernflower|vineflower|follow call flow|decompile JAR|decompile AAR|Android reverse engineering|find API endpoints
 ---
 
