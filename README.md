@@ -1,6 +1,6 @@
 # Android Reverse Engineering & API Extraction — Claude Code skill
 
-A Claude Code skill that decompiles Android APK/XAPK/JAR/AAR files, **extracts HTTP APIs**, and **audits privacy** by detecting tracker/analytics and advertising SDKs — so you can document endpoints, understand data collection, and assess ad monetization without the original source code.
+A Claude Code skill that decompiles Android APK/XAPK/JAR/AAR files, **extracts HTTP APIs**, **audits privacy** by detecting tracker/analytics and advertising SDKs, and **neutralizes SDK telemetry** at the smali bytecode level for enterprise deployment — so you can document endpoints, understand data collection, assess ad monetization, and produce sanitized APKs without the original source code.
 
 ## What it does
 
@@ -9,6 +9,7 @@ A Claude Code skill that decompiles Android APK/XAPK/JAR/AAR files, **extracts H
 - **Traces call flows** from Activities/Fragments through ViewModels and repositories down to HTTP calls
 - **Detects tracker/analytics SDKs**: Firebase Analytics, Adjust, AppsFlyer, Mixpanel, Amplitude, Segment, Braze, CleverTap, Flurry — with deep analysis of init, events, user identification, consent, and data exfiltration endpoints
 - **Detects advertising SDKs**: AdMob, Unity Ads, IronSource/LevelPlay, AppLovin/MAX, Meta Audience Network, Vungle, InMobi, Chartboost, Pangle, Mintegral — with ad format mapping, mediation analysis, and consent framework detection
+- **Neutralizes SDK entry points**: replaces tracker/ad SDK method bodies with no-op stubs at the smali level, disables manifest components, and rebuilds a signed APK for enterprise sideloading
 - **Analyzes** app structure: manifest, packages, architecture patterns
 - **Handles obfuscated code**: strategies for navigating ProGuard/R8 output
 
@@ -21,6 +22,10 @@ A Claude Code skill that decompiles Android APK/XAPK/JAR/AAR files, **extracts H
 **Optional (recommended):**
 - [Vineflower](https://github.com/Vineflower/vineflower) or [Fernflower](https://github.com/JetBrains/fernflower) — better output on complex Java code
 - [dex2jar](https://github.com/pxb1988/dex2jar) — needed to use Fernflower on APK/DEX files
+
+**For SDK neutralization (`/neutralize`):**
+- [apktool](https://apktool.org/) (required) — APK decode/rebuild
+- apksigner or jarsigner (required) — APK signing
 
 See `plugins/android-reverse-engineering/skills/android-reverse-engineering/references/setup-guide.md` for detailed installation instructions.
 
@@ -36,6 +41,29 @@ Inside Claude Code, run:
 ```
 
 The skill will be permanently available in all future sessions.
+
+### Permissions
+
+Claude Code will ask for approval when the skill runs bash scripts (e.g., `neutralize.sh`, `find-ads.sh`, `apktool`). This is standard Claude Code security behaviour — `allowed-tools` in skills declares which tools may be used, but does not bypass your permission settings.
+
+To avoid repeated prompts, you can either:
+
+- **Per-session**: when prompted, select *"Yes, and don't ask again for: bash:\*"*
+- **Permanent**: add the following to your `~/.claude/settings.json`:
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash(bash */sdk-neutralizer/scripts/*)",
+      "Bash(bash */ad-analysis/scripts/*)",
+      "Bash(bash */tracker-analysis/scripts/*)",
+      "Bash(bash */android-reverse-engineering/scripts/*)",
+      "Bash(apktool *)"
+    ]
+  }
+}
+```
 
 ### From a local clone
 
@@ -69,6 +97,13 @@ Detects analytics/tracker SDKs and produces a privacy report with init patterns,
 ```
 Detects advertising SDKs and produces a report with ad formats, mediation setup, ad unit IDs, and consent framework analysis.
 
+```
+/neutralize path/to/app.apk
+```
+Neutralizes tracker/ad SDK entry points in the APK, producing a sanitized APK for enterprise sideloading with telemetry disabled.
+
+> **Warning**: SDK neutralization modifies bytecode and can cause crashes, broken features, or unexpected behaviour. The APK signature is invalidated. Ensure you have authorization to modify the application and that your use complies with applicable laws and the app's EULA. See the [Disclaimer](#disclaimer) for details.
+
 ### Natural language
 
 The skills activate on phrases like:
@@ -82,6 +117,9 @@ The skills activate on phrases like:
 - "What analytics SDKs does this app use?"
 - "Detect ad networks in this app"
 - "Show me the ad mediation setup"
+- "Neutralize trackers in this APK"
+- "Remove telemetry from this app"
+- "Sanitize this APK for enterprise deployment"
 
 ### Manual scripts
 
@@ -121,6 +159,18 @@ bash plugins/android-reverse-engineering/skills/tracker-analysis/scripts/find-tr
 bash plugins/android-reverse-engineering/skills/ad-analysis/scripts/find-ads.sh output/sources/
 bash plugins/android-reverse-engineering/skills/ad-analysis/scripts/find-ads.sh output/sources/ --admob
 bash plugins/android-reverse-engineering/skills/ad-analysis/scripts/find-ads.sh output/sources/ --mediation
+
+# Neutralize SDK entry points (decode → patch → rebuild)
+bash plugins/android-reverse-engineering/skills/sdk-neutralizer/scripts/decode-apk.sh app.apk -o app-decoded
+bash plugins/android-reverse-engineering/skills/sdk-neutralizer/scripts/neutralize.sh app-decoded --all --dry-run
+bash plugins/android-reverse-engineering/skills/sdk-neutralizer/scripts/neutralize.sh app-decoded --all
+bash plugins/android-reverse-engineering/skills/sdk-neutralizer/scripts/rebuild-apk.sh app-decoded --debug-key
+
+# XAPK support — decode-apk.sh extracts the base APK automatically
+bash plugins/android-reverse-engineering/skills/sdk-neutralizer/scripts/decode-apk.sh app-bundle.xapk -o app-decoded
+
+# Replay previous patches after re-decoding
+bash plugins/android-reverse-engineering/skills/sdk-neutralizer/scripts/neutralize.sh app-decoded --replay
 ```
 
 ## Repository Structure
@@ -155,18 +205,29 @@ android-reverse-engineering-skill/
 │       │   │   │   └── data-exfiltration-patterns.md
 │       │   │   └── scripts/
 │       │   │       └── find-trackers.sh
-│       │   └── ad-analysis/                 # Advertising SDK detection
-│       │       ├── SKILL.md                # 3-phase workflow
+│       │   ├── ad-analysis/                 # Advertising SDK detection
+│       │   │   ├── SKILL.md                # 3-phase workflow
+│       │   │   ├── references/
+│       │   │   │   ├── ad-sdk-catalog.md
+│       │   │   │   ├── mediation-patterns.md
+│       │   │   │   └── ad-format-patterns.md
+│       │   │   └── scripts/
+│       │   │       └── find-ads.sh
+│       │   └── sdk-neutralizer/             # SDK neutralization for enterprise
+│       │       ├── SKILL.md                # 6-phase workflow
 │       │       ├── references/
-│       │       │   ├── ad-sdk-catalog.md
-│       │       │   ├── mediation-patterns.md
-│       │       │   └── ad-format-patterns.md
+│       │       │   ├── neutralization-guide.md
+│       │       │   └── smali-patterns.md
 │       │       └── scripts/
-│       │           └── find-ads.sh
+│       │           ├── check-neutralize-deps.sh
+│       │           ├── decode-apk.sh
+│       │           ├── neutralize.sh
+│       │           └── rebuild-apk.sh
 │       └── commands/
 │           ├── decompile.md                # /decompile slash command
 │           ├── find-trackers.md            # /find-trackers slash command
-│           └── find-ads.md                 # /find-ads slash command
+│           ├── find-ads.md                 # /find-ads slash command
+│           └── neutralize.md               # /neutralize slash command
 ├── LICENSE
 └── README.md
 ```
@@ -187,6 +248,10 @@ This plugin is provided strictly for **lawful purposes**, including but not limi
 - Interoperability analysis permitted under applicable law (e.g., EU Directive 2009/24/EC, US DMCA §1201(f))
 - Malware analysis and incident response
 - Educational use and CTF competitions
+- Enterprise privacy compliance and data minimisation (GDPR Art. 5(1)(c))
+- Authorized internal distribution of sanitized applications
+
+**SDK neutralization** modifies APK bytecode and invalidates the original signature. The resulting APK will fail Play Integrity checks and is intended only for enterprise sideloading via MDM or authorized internal distribution. Using this feature to circumvent digital rights management for unauthorized purposes is prohibited.
 
 **You are solely responsible** for ensuring that your use of this tool complies with all applicable laws, regulations, and terms of service. Unauthorized reverse engineering of software you do not own or do not have permission to analyze may violate intellectual property laws and computer fraud statutes in your jurisdiction.
 

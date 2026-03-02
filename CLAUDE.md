@@ -4,10 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A Claude Code Skill (plugin) for Android reverse engineering, API extraction, and privacy auditing. It provides three skills:
+A Claude Code Skill (plugin) for Android reverse engineering, API extraction, and privacy auditing. It provides four skills:
 - **android-reverse-engineering**: 5-phase workflow — dependency verification, APK/XAPK/JAR/AAR decompilation (jadx and/or Fernflower), manifest/structure analysis, call flow tracing, and HTTP API endpoint extraction
 - **tracker-analysis**: 4-phase workflow — detect analytics/tracker SDKs (Firebase, Adjust, AppsFlyer, Mixpanel, Amplitude, Segment, Braze, CleverTap, Flurry), analyze init/events/user ID/consent, report data exfiltration endpoints
 - **ad-analysis**: 3-phase workflow — detect ad SDKs (AdMob, Unity, IronSource, AppLovin, Meta AN, Vungle, InMobi, Chartboost, Pangle, Mintegral), map ad formats and mediation setup, report privacy/consent
+- **sdk-neutralizer**: 6-phase workflow — decode APK, identify tracker/ad SDK entry points, neutralize by replacing smali method bodies with stubs, disable manifest components, rebuild and sign APK for enterprise sideloading
 
 ## Repository Structure
 
@@ -16,9 +17,11 @@ A Claude Code Skill (plugin) for Android reverse engineering, API extraction, an
 - `plugins/android-reverse-engineering/commands/decompile.md` — `/decompile` slash command
 - `plugins/android-reverse-engineering/commands/find-trackers.md` — `/find-trackers` slash command
 - `plugins/android-reverse-engineering/commands/find-ads.md` — `/find-ads` slash command
+- `plugins/android-reverse-engineering/commands/neutralize.md` — `/neutralize` slash command
 - `plugins/android-reverse-engineering/skills/android-reverse-engineering/` — Core RE skill (5-phase workflow, references, scripts)
 - `plugins/android-reverse-engineering/skills/tracker-analysis/` — Tracker/analytics SDK detection skill (4-phase workflow, references, find-trackers.sh)
 - `plugins/android-reverse-engineering/skills/ad-analysis/` — Advertising SDK detection skill (3-phase workflow, references, find-ads.sh)
+- `plugins/android-reverse-engineering/skills/sdk-neutralizer/` — SDK neutralization skill (6-phase workflow, references, decode-apk.sh, neutralize.sh, rebuild-apk.sh)
 
 ## Key Scripts
 
@@ -50,6 +53,22 @@ Ad analysis script under `plugins/android-reverse-engineering/skills/ad-analysis
 ```bash
 # Search for advertising SDKs
 bash find-ads.sh <source-dir> [--admob|--unity|--ironsource|--applovin|--facebook|--formats|--mediation|--consent|--entrypoints|--all]
+```
+
+SDK neutralizer scripts under `plugins/android-reverse-engineering/skills/sdk-neutralizer/scripts/`:
+
+```bash
+# Check neutralization dependencies (including apktool >= 2.9.0)
+bash check-neutralize-deps.sh
+
+# Decode APK or XAPK (extracts base APK from XAPK automatically)
+bash decode-apk.sh <file.apk|file.xapk> [-o <decoded-dir>]
+
+# Neutralize SDK entry points in decoded APK (dry-run first)
+bash neutralize.sh <decoded-dir> [--ads|--trackers|--all] [--dry-run] [--no-backup] [--no-manifest] [--targets-file <file>] [--replay] [--no-save-manifest]
+
+# Rebuild and sign neutralized APK
+bash rebuild-apk.sh <decoded-dir> [--debug-key|--keystore <file>] [-o <output>] [--no-sign] [--no-res] [--zipalign]
 ```
 
 ## Architecture
