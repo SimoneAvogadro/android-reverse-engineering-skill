@@ -59,13 +59,18 @@ elif command -v pacman &>/dev/null; then
   PKG_MANAGER="pacman"
 fi
 
-# Check sudo availability
+# Check sudo availability — must actually work, not just exist
 if command -v sudo &>/dev/null; then
   if sudo -n true 2>/dev/null; then
+    # Passwordless sudo works (NOPASSWD or cached credentials)
+    HAS_SUDO=true
+  elif [[ -t 0 ]]; then
+    # stdin is a terminal — sudo can prompt for password interactively
     HAS_SUDO=true
   else
-    # sudo exists but may need password — we'll try it and let it prompt
-    HAS_SUDO=true
+    # sudo exists but can't authenticate (no TTY, no cached credentials)
+    # This happens inside Claude Code, CI, cron, pipes, etc.
+    HAS_SUDO=false
   fi
 fi
 
@@ -73,8 +78,13 @@ info()  { echo "[INFO] $*"; }
 ok()    { echo "[OK] $*"; }
 fail()  { echo "[FAIL] $*" >&2; }
 manual() {
-  echo "[MANUAL] $*" >&2
-  echo "         Cannot install automatically. Please install manually and retry." >&2
+  echo "" >&2
+  echo "[MANUAL ACTION REQUIRED]" >&2
+  echo "  Cannot install automatically (no interactive terminal for sudo)." >&2
+  echo "  Please run the following command in a terminal, then retry:" >&2
+  echo "" >&2
+  echo "    $*" >&2
+  echo "" >&2
   exit 2
 }
 
@@ -91,7 +101,7 @@ pkg_install() {
         info "Installing $pkg via apt..."
         sudo apt-get update -qq && sudo apt-get install -y -qq "$pkg"
       else
-        manual "Run: sudo apt-get install $pkg"
+        manual "sudo apt-get update && sudo apt-get install -y $pkg"
       fi
       ;;
     dnf)
@@ -99,7 +109,7 @@ pkg_install() {
         info "Installing $pkg via dnf..."
         sudo dnf install -y "$pkg"
       else
-        manual "Run: sudo dnf install $pkg"
+        manual "sudo dnf install -y $pkg"
       fi
       ;;
     pacman)
@@ -107,13 +117,42 @@ pkg_install() {
         info "Installing $pkg via pacman..."
         sudo pacman -S --noconfirm "$pkg"
       else
-        manual "Run: sudo pacman -S $pkg"
+        manual "sudo pacman -S $pkg"
       fi
       ;;
     *)
       manual "No supported package manager found. Install $pkg manually."
       ;;
   esac
+}
+
+# --- Helper: check that a tool needed by this script is available ---
+require_tool() {
+  local tool="$1"
+  if command -v "$tool" &>/dev/null; then
+    return 0
+  fi
+
+  # Build the install command for the user
+  local install_cmd=""
+  case "$PKG_MANAGER" in
+    brew)   install_cmd="brew install $tool" ;;
+    apt)    install_cmd="sudo apt-get update && sudo apt-get install -y $tool" ;;
+    dnf)    install_cmd="sudo dnf install -y $tool" ;;
+    pacman) install_cmd="sudo pacman -S $tool" ;;
+  esac
+
+  echo "" >&2
+  echo "[MISSING PREREQUISITE] '$tool' is required by install-dep.sh but is not installed." >&2
+  if [[ -n "$install_cmd" ]]; then
+    echo "  Please run the following command in a terminal first, then retry:" >&2
+    echo "" >&2
+    echo "    $install_cmd" >&2
+  else
+    echo "  Please install '$tool' using your system package manager, then retry." >&2
+  fi
+  echo "" >&2
+  exit 2
 }
 
 # --- Helper: download a file ---
@@ -124,8 +163,7 @@ download() {
   elif command -v wget &>/dev/null; then
     wget -q -O "$dest" "$url"
   else
-    fail "Neither curl nor wget available."
-    return 1
+    require_tool "curl"  # exits with instructions
   fi
 }
 
@@ -203,6 +241,9 @@ install_jadx() {
     ok "jadx already installed: $(jadx --version 2>/dev/null || echo 'unknown')"
     return 0
   fi
+
+  # Check prerequisites for download-based install
+  require_tool "unzip"
 
   # Try brew first (cleanest)
   if [[ "$PKG_MANAGER" == "brew" ]]; then
@@ -318,6 +359,9 @@ install_dex2jar() {
     ok "dex2jar already installed"
     return 0
   fi
+
+  # Check prerequisites for download-based install
+  require_tool "unzip"
 
   # Try brew
   if [[ "$PKG_MANAGER" == "brew" ]]; then

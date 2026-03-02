@@ -1,13 +1,13 @@
 {
   "name": "android-reverse-engineering",
   "version": "1.0.0",
-  "description": "Decompile Android APK/JAR/AAR with jadx, trace call flows through libraries, and document extracted APIs.",
+  "description": "Decompile Android APK/JAR/AAR with jadx, trace call flows, extract APIs, and analyze tracker/ad SDKs for privacy auditing.",
   "author": {
     "name": "Simone Avogadro"
   },
   "repository": "https://github.com/SimoneAvogadro/android-reverse-engineering-skill",
   "license": "Apache-2.0",
-  "keywords": ["android", "reverse-engineering", "apk", "jadx", "decompile", "api-extraction"],
+  "keywords": ["android", "reverse-engineering", "apk", "jadx", "decompile", "api-extraction", "tracker-analysis", "ad-analysis", "privacy"],
   "skills": "./skills/",
   "commands": "./commands/"
 }

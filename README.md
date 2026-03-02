@@ -1,12 +1,14 @@
 # Android Reverse Engineering & API Extraction — Claude Code skill
 
-A Claude Code skill that decompiles Android APK/XAPK/JAR/AAR files and **extracts the HTTP APIs** used by the app — Retrofit endpoints, OkHttp calls, hardcoded URLs, authentication patterns — so you can document and reproduce them without the original source code.
+A Claude Code skill that decompiles Android APK/XAPK/JAR/AAR files, **extracts HTTP APIs**, and **audits privacy** by detecting tracker/analytics and advertising SDKs — so you can document endpoints, understand data collection, and assess ad monetization without the original source code.
 
 ## What it does
 
 - **Decompiles** APK, XAPK, JAR, and AAR files using jadx and Fernflower/Vineflower (single engine or side-by-side comparison)
 - **Extracts and documents APIs**: Retrofit endpoints, OkHttp calls, hardcoded URLs, auth headers and tokens
 - **Traces call flows** from Activities/Fragments through ViewModels and repositories down to HTTP calls
+- **Detects tracker/analytics SDKs**: Firebase Analytics, Adjust, AppsFlyer, Mixpanel, Amplitude, Segment, Braze, CleverTap, Flurry — with deep analysis of init, events, user identification, consent, and data exfiltration endpoints
+- **Detects advertising SDKs**: AdMob, Unity Ads, IronSource/LevelPlay, AppLovin/MAX, Meta Audience Network, Vungle, InMobi, Chartboost, Pangle, Mintegral — with ad format mapping, mediation analysis, and consent framework detection
 - **Analyzes** app structure: manifest, packages, architecture patterns
 - **Handles obfuscated code**: strategies for navigating ProGuard/R8 output
 
@@ -50,23 +52,36 @@ Then in Claude Code:
 
 ## Usage
 
-### Slash command
+### Slash commands
 
 ```
 /decompile path/to/app.apk
 ```
+Runs the full workflow: dependency check, decompilation, and initial structure analysis.
 
-This runs the full workflow: dependency check, decompilation, and initial structure analysis.
+```
+/find-trackers path/to/decompiled/sources/
+```
+Detects analytics/tracker SDKs and produces a privacy report with init patterns, events, user identification, consent handling, and data endpoints.
+
+```
+/find-ads path/to/decompiled/sources/
+```
+Detects advertising SDKs and produces a report with ad formats, mediation setup, ad unit IDs, and consent framework analysis.
 
 ### Natural language
 
-The skill activates on phrases like:
+The skills activate on phrases like:
 
 - "Decompile this APK"
 - "Reverse engineer this Android app"
 - "Extract API endpoints from this app"
 - "Follow the call flow from LoginActivity"
 - "Analyze this AAR library"
+- "Find trackers in this app"
+- "What analytics SDKs does this app use?"
+- "Detect ad networks in this app"
+- "Show me the ad mediation setup"
 
 ### Manual scripts
 
@@ -96,6 +111,16 @@ bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scri
 bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/find-api-calls.sh output/sources/
 bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/find-api-calls.sh output/sources/ --retrofit
 bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/find-api-calls.sh output/sources/ --urls
+
+# Find tracker/analytics SDKs
+bash plugins/android-reverse-engineering/skills/tracker-analysis/scripts/find-trackers.sh output/sources/
+bash plugins/android-reverse-engineering/skills/tracker-analysis/scripts/find-trackers.sh output/sources/ --firebase
+bash plugins/android-reverse-engineering/skills/tracker-analysis/scripts/find-trackers.sh output/sources/ --adjust
+
+# Find advertising SDKs
+bash plugins/android-reverse-engineering/skills/ad-analysis/scripts/find-ads.sh output/sources/
+bash plugins/android-reverse-engineering/skills/ad-analysis/scripts/find-ads.sh output/sources/ --admob
+bash plugins/android-reverse-engineering/skills/ad-analysis/scripts/find-ads.sh output/sources/ --mediation
 ```
 
 ## Repository Structure
@@ -109,21 +134,39 @@ android-reverse-engineering-skill/
 │       ├── .claude-plugin/
 │       │   └── plugin.json                 # Plugin manifest
 │       ├── skills/
-│       │   └── android-reverse-engineering/
-│       │       ├── SKILL.md                # Core workflow (5 phases)
+│       │   ├── android-reverse-engineering/ # Core RE skill
+│       │   │   ├── SKILL.md                # 5-phase workflow
+│       │   │   ├── references/
+│       │   │   │   ├── setup-guide.md
+│       │   │   │   ├── jadx-usage.md
+│       │   │   │   ├── fernflower-usage.md
+│       │   │   │   ├── api-extraction-patterns.md
+│       │   │   │   └── call-flow-analysis.md
+│       │   │   └── scripts/
+│       │   │       ├── check-deps.sh
+│       │   │       ├── install-dep.sh
+│       │   │       ├── decompile.sh
+│       │   │       └── find-api-calls.sh
+│       │   ├── tracker-analysis/            # Tracker/analytics SDK detection
+│       │   │   ├── SKILL.md                # 4-phase workflow
+│       │   │   ├── references/
+│       │   │   │   ├── tracker-sdk-catalog.md
+│       │   │   │   ├── tracker-init-patterns.md
+│       │   │   │   └── data-exfiltration-patterns.md
+│       │   │   └── scripts/
+│       │   │       └── find-trackers.sh
+│       │   └── ad-analysis/                 # Advertising SDK detection
+│       │       ├── SKILL.md                # 3-phase workflow
 │       │       ├── references/
-│       │       │   ├── setup-guide.md
-│       │       │   ├── jadx-usage.md
-│       │       │   ├── fernflower-usage.md
-│       │       │   ├── api-extraction-patterns.md
-│       │       │   └── call-flow-analysis.md
+│       │       │   ├── ad-sdk-catalog.md
+│       │       │   ├── mediation-patterns.md
+│       │       │   └── ad-format-patterns.md
 │       │       └── scripts/
-│       │           ├── check-deps.sh
-│       │           ├── install-dep.sh
-│       │           ├── decompile.sh
-│       │           └── find-api-calls.sh
+│       │           └── find-ads.sh
 │       └── commands/
-│           └── decompile.md                # /decompile slash command
+│           ├── decompile.md                # /decompile slash command
+│           ├── find-trackers.md            # /find-trackers slash command
+│           └── find-ads.md                 # /find-ads slash command
 ├── LICENSE
 └── README.md
 ```
