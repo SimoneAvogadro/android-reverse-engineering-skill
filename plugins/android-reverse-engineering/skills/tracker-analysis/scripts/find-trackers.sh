@@ -24,6 +24,7 @@ Options:
   --generic       Search only for generic cross-SDK patterns
   --endpoints     Search only for known tracker endpoints
   --manifest      Search only for AndroidManifest.xml markers
+  --entrypoints   Search only for tracker SDK calls in app code (excludes library packages)
   --all           Search all patterns (default)
   -h, --help      Show this help message
 
@@ -46,6 +47,7 @@ SEARCH_FLURRY=false
 SEARCH_GENERIC=false
 SEARCH_ENDPOINTS=false
 SEARCH_MANIFEST=false
+SEARCH_ENTRYPOINTS=false
 SEARCH_ALL=true
 
 while [[ $# -gt 0 ]]; do
@@ -61,8 +63,9 @@ while [[ $# -gt 0 ]]; do
     --flurry)     SEARCH_FLURRY=true;     SEARCH_ALL=false; shift ;;
     --generic)    SEARCH_GENERIC=true;    SEARCH_ALL=false; shift ;;
     --endpoints)  SEARCH_ENDPOINTS=true;  SEARCH_ALL=false; shift ;;
-    --manifest)   SEARCH_MANIFEST=true;   SEARCH_ALL=false; shift ;;
-    --all)        SEARCH_ALL=true; shift ;;
+    --manifest)     SEARCH_MANIFEST=true;     SEARCH_ALL=false; shift ;;
+    --entrypoints)  SEARCH_ENTRYPOINTS=true;  SEARCH_ALL=false; shift ;;
+    --all)          SEARCH_ALL=true; shift ;;
     -h|--help)    usage ;;
     -*)           echo "Error: Unknown option $1" >&2; usage ;;
     *)            SOURCE_DIR="$1"; shift ;;
@@ -225,6 +228,40 @@ if [[ "$SEARCH_ALL" == true || "$SEARCH_MANIFEST" == true ]]; then
   section "AndroidManifest — Tracker Meta-data"
   run_grep_xml '(com\.google\.firebase\.analytics|firebase_analytics_collection_enabled|google_analytics_adid_collection_enabled)'
   run_grep_xml '(ADJUST_|APPSFLYER_|MIXPANEL_|AMPLITUDE_|SEGMENT_|BRAZE_|CLEVERTAP_|FLURRY_)'
+fi
+
+# --- Entry Points: Tracker SDK calls from app code only ---
+if [[ "$SEARCH_ALL" == true || "$SEARCH_ENTRYPOINTS" == true ]]; then
+  section "Entry Points — Tracker SDK calls from app code (library packages excluded)"
+
+  # Build --exclude-dir arguments for known tracker/analytics library packages
+  EXCLUDE_DIRS=(
+    --exclude-dir="com/google"
+    --exclude-dir="com/adjust"
+    --exclude-dir="com/appsflyer"
+    --exclude-dir="com/mixpanel"
+    --exclude-dir="com/amplitude"
+    --exclude-dir="com/segment"
+    --exclude-dir="com/braze"
+    --exclude-dir="com/appboy"
+    --exclude-dir="com/clevertap"
+    --exclude-dir="com/flurry"
+    --exclude-dir="com/facebook"
+    --exclude-dir="com/newrelic"
+    --exclude-dir="com/crashlytics"
+    --exclude-dir="io/sentry"
+    --exclude-dir="com/bugsnag"
+    --exclude-dir="com/datadog"
+  )
+
+  ENTRYPOINT_PATTERN='(FirebaseAnalytics\.getInstance|FirebaseAnalytics\.newInstance|FirebaseApp\.initializeApp|\.logEvent\s*\(|\.setUserId\s*\(|\.setUserProperty\s*\(|\.setAnalyticsCollectionEnabled|Adjust\.onCreate|Adjust\.trackEvent|AdjustConfig\s*\(|AppsFlyerLib\.getInstance|\.init\s*\(.*AF_DEV_KEY|\.start\s*\(.*AppsFlyerLib|MixpanelAPI\.getInstance|\.track\s*\(.*MixpanelAPI|\.identify\s*\(.*Mixpanel|Amplitude\.getInstance|\.logEvent\s*\(.*Amplitude|Analytics\.with\s*\(|\.track\s*\(.*Segment|\.identify\s*\(.*Segment|Braze\.configure|\.logCustomEvent\s*\(|\.changeUser\s*\(.*Braze|CleverTapAPI\.getDefaultInstance|\.pushEvent\s*\(|\.onUserLogin\s*\(|FlurryAgent\.logEvent|FlurryAgent\.setUserId|FlurryAgent\.Builder)'
+
+  # shellcheck disable=SC2086
+  grep -rn --include="*.java" --include="*.kt" "${EXCLUDE_DIRS[@]}" -E "$ENTRYPOINT_PATTERN" "$SOURCE_DIR" 2>/dev/null || true
+
+  echo
+  echo "NOTE: Only calls from app code are shown above. Library-internal calls are excluded."
+  echo "If no results appear, tracker SDKs may only be initialized internally (e.g., via ContentProvider)."
 fi
 
 echo

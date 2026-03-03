@@ -1,26 +1,26 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "android-reverse-engineering-skill",
-  "description": "Claude Code plugins for Android reverse engineering, tracker detection, and ad SDK analysis",
+  "description": "Claude Code plugins for Android reverse engineering, tracker detection, ad SDK analysis, and SDK neutralization for enterprise deployment",
   "owner": {
     "name": "Simone Avogadro"
   },
   "metadata": {
-    "description": "Claude Code plugins for Android reverse engineering, tracker detection, and ad SDK analysis",
-    "version": "1.1.0"
+    "description": "Claude Code plugins for Android reverse engineering, tracker detection, ad SDK analysis, and SDK neutralization for enterprise deployment",
+    "version": "1.2.0"
   },
   "plugins": [
     {
       "name": "android-reverse-engineering",
       "source": "./plugins/android-reverse-engineering",
-      "description": "Decompile Android APK/JAR/AAR with jadx, trace call flows, extract APIs, and analyze tracker/ad SDKs for privacy auditing.",
-      "version": "1.1.0",
+      "description": "Decompile Android APK/JAR/AAR with jadx, trace call flows, extract APIs, analyze tracker/ad SDKs for privacy auditing, and neutralize SDK entry points for enterprise deployment.",
+      "version": "1.2.0",
       "author": {
         "name": "Simone Avogadro"
       },
       "repository": "https://github.com/SimoneAvogadro/android-reverse-engineering-skill",
       "license": "Apache-2.0",
-      "keywords": ["android", "reverse-engineering", "apk", "jadx", "decompile", "api-extraction", "tracker-analysis", "ad-analysis", "privacy"],
+      "keywords": ["android", "reverse-engineering", "apk", "jadx", "decompile", "api-extraction", "tracker-analysis", "ad-analysis", "privacy", "sdk-neutralizer", "enterprise"],
       "category": "security"
     }
   ]

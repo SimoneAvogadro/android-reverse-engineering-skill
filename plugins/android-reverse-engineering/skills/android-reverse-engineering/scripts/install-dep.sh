@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # install-dep.sh — Install a single dependency for Android reverse engineering
 # Usage: install-dep.sh <dependency>
-# Dependencies: java, jadx, vineflower, dex2jar, apktool, adb
+# Dependencies: java, jadx, vineflower, dex2jar, apktool, adb, smali, apksigner
 #
 # Exit codes:
 #   0 — installed successfully
@@ -22,6 +22,8 @@ Available dependencies:
   dex2jar      DEX to JAR converter
   apktool      Android resource decoder
   adb          Android Debug Bridge
+  smali        Smali/baksmali assembler/disassembler
+  apksigner    Android APK signing tool
 
 The script detects your OS and package manager, then:
   - Installs directly if possible (brew, or user-local install)
@@ -473,6 +475,187 @@ install_adb() {
   fi
 }
 
+install_smali() {
+  if command -v smali &>/dev/null || command -v baksmali &>/dev/null; then
+    ok "smali/baksmali already installed"
+    return 0
+  fi
+
+  # Check prerequisites for download-based install
+  require_tool "unzip"
+
+  # Try brew first
+  if [[ "$PKG_MANAGER" == "brew" ]]; then
+    info "Installing smali via Homebrew..."
+    if brew install smali 2>/dev/null; then
+      ok "smali installed via Homebrew"
+      return 0
+    fi
+    info "Homebrew formula not available, falling back to direct download."
+  fi
+
+  # Download from GitHub releases (no sudo needed)
+  info "Installing smali from GitHub releases..."
+  local tag
+  tag=$(gh_latest_tag "google/smali")
+  if [[ -z "$tag" ]]; then
+    tag="v3.0.8"
+  fi
+
+  local version="${tag#v}"
+  local url="https://github.com/google/smali/releases/download/${tag}/smali-${version}.zip"
+  local tmp_zip
+  tmp_zip=$(mktemp /tmp/smali-XXXXXX.zip)
+
+  info "Downloading smali $version..."
+  if ! download "$url" "$tmp_zip"; then
+    # Try alternate naming with baksmali
+    url="https://github.com/google/smali/releases/download/${tag}/smali-${version}-fat.jar"
+    local install_dir="$HOME/.local/share/smali"
+    mkdir -p "$install_dir"
+    if download "$url" "$install_dir/smali.jar"; then
+      # Single JAR install — create wrapper
+      mkdir -p "$HOME/.local/bin"
+      cat > "$HOME/.local/bin/smali" <<'WRAPPER'
+#!/usr/bin/env bash
+exec java -jar "$HOME/.local/share/smali/smali.jar" assemble "$@"
+WRAPPER
+      cat > "$HOME/.local/bin/baksmali" <<'WRAPPER'
+#!/usr/bin/env bash
+exec java -jar "$HOME/.local/share/smali/smali.jar" disassemble "$@"
+WRAPPER
+      chmod +x "$HOME/.local/bin/smali" "$HOME/.local/bin/baksmali"
+      export PATH="$HOME/.local/bin:$PATH"
+      add_to_profile 'export PATH="$HOME/.local/bin:$PATH"'
+      ok "smali $version installed to $install_dir"
+      rm -f "$tmp_zip"
+      return 0
+    fi
+    fail "Download failed."
+    rm -f "$tmp_zip"
+    manual "Download from https://github.com/google/smali/releases/latest"
+  fi
+
+  local install_dir="$HOME/.local/share/smali"
+  rm -rf "$install_dir"
+  mkdir -p "$install_dir"
+  unzip -qo "$tmp_zip" -d "$install_dir"
+  rm -f "$tmp_zip"
+
+  # Create wrapper scripts
+  mkdir -p "$HOME/.local/bin"
+
+  # Look for the smali JAR
+  local smali_jar
+  smali_jar=$(find "$install_dir" -name "smali*.jar" -not -name "*baksmali*" | head -1)
+  local baksmali_jar
+  baksmali_jar=$(find "$install_dir" -name "baksmali*.jar" | head -1)
+
+  if [[ -n "$smali_jar" ]]; then
+    cat > "$HOME/.local/bin/smali" <<WRAPPER
+#!/usr/bin/env bash
+exec java -jar "$smali_jar" "\$@"
+WRAPPER
+    chmod +x "$HOME/.local/bin/smali"
+  fi
+
+  if [[ -n "$baksmali_jar" ]]; then
+    cat > "$HOME/.local/bin/baksmali" <<WRAPPER
+#!/usr/bin/env bash
+exec java -jar "$baksmali_jar" "\$@"
+WRAPPER
+    chmod +x "$HOME/.local/bin/baksmali"
+  fi
+
+  # Also look for shell scripts
+  for script in "$install_dir"/bin/smali "$install_dir"/bin/baksmali "$install_dir"/smali "$install_dir"/baksmali; do
+    if [[ -x "$script" ]]; then
+      local name
+      name=$(basename "$script")
+      ln -sf "$script" "$HOME/.local/bin/$name"
+    fi
+  done
+
+  export PATH="$HOME/.local/bin:$PATH"
+  add_to_profile 'export PATH="$HOME/.local/bin:$PATH"'
+
+  ok "smali $version installed to $install_dir"
+}
+
+install_apksigner() {
+  if command -v apksigner &>/dev/null; then
+    ok "apksigner already installed"
+    return 0
+  fi
+
+  # Check if Android SDK build-tools has apksigner
+  if [[ -n "${ANDROID_HOME:-}" ]]; then
+    local bt_dir="$ANDROID_HOME/build-tools"
+    if [[ -d "$bt_dir" ]]; then
+      local latest_bt
+      latest_bt=$(ls -1 "$bt_dir" 2>/dev/null | sort -V | tail -1)
+      if [[ -n "$latest_bt" ]] && [[ -f "$bt_dir/$latest_bt/apksigner" ]]; then
+        mkdir -p "$HOME/.local/bin"
+        ln -sf "$bt_dir/$latest_bt/apksigner" "$HOME/.local/bin/apksigner"
+        export PATH="$HOME/.local/bin:$PATH"
+        add_to_profile 'export PATH="$HOME/.local/bin:$PATH"'
+        ok "apksigner linked from Android SDK build-tools ($latest_bt)"
+        return 0
+      fi
+    fi
+  fi
+
+  # Also check ANDROID_SDK_ROOT
+  if [[ -n "${ANDROID_SDK_ROOT:-}" ]] && [[ "$ANDROID_SDK_ROOT" != "${ANDROID_HOME:-}" ]]; then
+    local bt_dir="$ANDROID_SDK_ROOT/build-tools"
+    if [[ -d "$bt_dir" ]]; then
+      local latest_bt
+      latest_bt=$(ls -1 "$bt_dir" 2>/dev/null | sort -V | tail -1)
+      if [[ -n "$latest_bt" ]] && [[ -f "$bt_dir/$latest_bt/apksigner" ]]; then
+        mkdir -p "$HOME/.local/bin"
+        ln -sf "$bt_dir/$latest_bt/apksigner" "$HOME/.local/bin/apksigner"
+        export PATH="$HOME/.local/bin:$PATH"
+        add_to_profile 'export PATH="$HOME/.local/bin:$PATH"'
+        ok "apksigner linked from Android SDK build-tools ($latest_bt)"
+        return 0
+      fi
+    fi
+  fi
+
+  # Try package manager
+  case "$PKG_MANAGER" in
+    brew)
+      info "Installing apksigner via Homebrew..."
+      # apksigner comes with android-sdk or android-build-tools
+      if brew install --cask android-commandlinetools 2>/dev/null; then
+        ok "Android command-line tools installed (includes apksigner)"
+        info "Run: sdkmanager --install 'build-tools;34.0.0' to get apksigner"
+        return 0
+      fi
+      ;;
+    apt)
+      # On Debian/Ubuntu, apksigner is in the apksigner package
+      pkg_install "apksigner"
+      if command -v apksigner &>/dev/null; then
+        ok "apksigner installed via apt"
+        return 0
+      fi
+      ;;
+    dnf|pacman)
+      # Typically part of android-tools or SDK
+      ;;
+  esac
+
+  # Fallback: check if jarsigner is available as alternative
+  if command -v jarsigner &>/dev/null; then
+    info "apksigner not found, but jarsigner is available as a fallback."
+    info "For best results, install Android SDK build-tools."
+    manual "Install Android SDK build-tools: sdkmanager --install 'build-tools;34.0.0'"
+  fi
+
+  manual "Install Android SDK build-tools or run: sudo apt install apksigner (Debian/Ubuntu)"
+}
+
 # =====================================================================
 # Dispatch
 # =====================================================================
@@ -484,9 +667,11 @@ case "$DEP" in
   dex2jar)     install_dex2jar ;;
   apktool)     install_apktool ;;
   adb)         install_adb ;;
+  smali|baksmali)  install_smali ;;
+  apksigner)   install_apksigner ;;
   *)
     echo "Error: Unknown dependency '$DEP'" >&2
-    echo "Available: java, jadx, vineflower, dex2jar, apktool, adb" >&2
+    echo "Available: java, jadx, vineflower, dex2jar, apktool, adb, smali, apksigner" >&2
     exit 1
     ;;
 esac
