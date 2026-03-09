@@ -64,15 +64,22 @@ Check that all required tools are installed.
 bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/check-neutralize-deps.sh
 ```
 
-If any `INSTALL_REQUIRED:` lines appear, install the missing dependencies:
+If any `INSTALL_REQUIRED:` lines appear, ask the user to install all dependencies at once:
 
 ```bash
-bash ${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/install-dep.sh <dep>
+# Install all neutralizer deps (java, apktool, apksigner, zip) in one command
+bash ${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/install-dep.sh neutralize-all
+```
+
+If the script exits with code 2 (sudo needed but no TTY), tell the user to run in their terminal:
+
+```
+sudo bash <plugin-root>/skills/android-reverse-engineering/scripts/install-dep.sh neutralize-all
 ```
 
 ### Phase 2: Decode APK
 
-Decode the APK (or XAPK) into smali and resources using decode-apk.sh. This script handles both `.apk` and `.xapk` files — for XAPKs it automatically extracts the base APK, skipping split/config APKs.
+Decode the APK (or XAPK) into smali and resources using decode-apk.sh. This script handles both `.apk` and `.xapk` files — for XAPKs it automatically extracts and decodes the base APK, while preserving the full XAPK structure (split APKs, manifest, icon) in a `.xapk-origin/` directory inside the decoded output for automatic reassembly during rebuild.
 
 **Action**: Run the decode script.
 
@@ -82,24 +89,99 @@ bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/decode-apk.sh <apk-or-
 
 The script verifies the output contains `smali/` and `AndroidManifest.xml` and outputs `DECODED_DIR:<path>`.
 
+For XAPK input, the script also outputs `XAPK_ORIGIN:<path>` and creates:
+- `.xapk-origin/metadata.json` — XAPK metadata (package, version, split list)
+- `.xapk-origin/manifest.json` — original XAPK manifest
+- `.xapk-origin/splits/` — all split APKs (config.arm64_v8a.apk, config.en.apk, etc.)
+
+If the input is an XAPK, inform the user that it's a split APK bundle and that all splits will be automatically re-signed during rebuild.
+
 ### Phase 3: Identify Targets
 
-Run the tracker and ad detection scripts on the decoded smali to identify which SDKs are present and which entry points the app uses.
+Target identification has three sub-phases. The goal is to find all SDK entry points to neutralize while minimizing manual approval prompts.
 
-**Action**: Run entry point detection.
+#### Phase 3a — Built-in Catalog Detection
+
+Use `neutralize.sh --dry-run` to detect known SDK targets. This is more reliable than `find-ads.sh`/`find-trackers.sh` because it searches smali directly (not Java source) and matches the exact patterns that will be patched.
+
+**Action**: Run dry-run detection.
 
 ```bash
-# Detect ad SDK entry points called from app code
-bash ${CLAUDE_PLUGIN_ROOT}/skills/ad-analysis/scripts/find-ads.sh <decoded-dir> --entrypoints
-
-# Detect tracker SDK entry points called from app code
-bash ${CLAUDE_PLUGIN_ROOT}/skills/tracker-analysis/scripts/find-trackers.sh <decoded-dir> --entrypoints
+bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/neutralize.sh <decoded-dir> --all --dry-run
 ```
 
-Present the detected SDKs and entry points to the user. Ask which categories to neutralize:
+Parse the output for:
+- `DRY_RUN:WOULD_PATCH:` lines — smali methods that would be stubbed
+- `DRY_RUN:WOULD_DISABLE:` lines — manifest components that would be disabled
+
+**NOTE**: Do NOT use `find-ads.sh` or `find-trackers.sh` here — those scripts search Java/Kotlin source (`.java`, `.kt`), not smali. The decoded directory from Phase 2 contains only smali bytecode, so those scripts will find nothing.
+
+#### Phase 3b — Custom/Proprietary SDK Discovery (if needed)
+
+Activate this sub-phase when:
+- The user mentions a specific SDK not in the built-in catalog (e.g., `guru/ads/fusion`, `com/proprietary/analytics`)
+- The dry-run found few or no targets but the user expects more
+- The user asks to find "all" trackers/ads, including custom/proprietary ones
+
+**CRITICAL — Use Claude Code built-in tools, NOT bash commands.** Glob, Grep, and Read are auto-approved and require no manual user approval. Using `bash find`, `bash grep`, or `bash head` forces the user to approve each command individually.
+
+**Discovery workflow using built-in tools:**
+
+1. **Find smali files by package pattern** — use Glob:
+   ```
+   Glob: **/smali*/com/guru/**/*.smali
+   Glob: **/smali*/com/proprietary/analytics/**/*.smali
+   ```
+
+2. **Find SDK method signatures** — use Grep on the matched files:
+   ```
+   Grep: pattern="^\.method.*(init|track|log|show|load|send|report|emit)"
+   Grep: pattern="^\.method.*getInstance"
+   ```
+
+3. **Find SDK invocations from app code** — use Grep on the app's own smali:
+   ```
+   Grep: pattern="invoke-(static|virtual|direct).*Lcom/guru/ads/"
+   Grep: pattern="invoke-(static|virtual|direct).*Lcom/proprietary/analytics/"
+   ```
+
+4. **Examine specific files** — use Read to inspect method bodies and confirm they are SDK entry points worth neutralizing.
+
+**Build the custom targets file** with discovered entry points, one per line, in the format:
+
+```
+<smali-class-path>:<method-name>
+```
+
+For example:
+```
+smali/com/guru/ads/fusion/FusionAd.smali:initialize
+smali/com/guru/ads/fusion/FusionAd.smali:showAd
+smali/com/guru/ads/fusion/FusionTracker.smali:trackEvent
+```
+
+**Action**: Write the targets file.
+
+```
+Write: <decoded-dir>/custom-targets.txt
+```
+
+#### Phase 3c — Compile Target List and Confirm
+
+Present a summary table of all targets to the user:
+
+| SDK | Category | Source | Entry Points |
+|---|---|---|---|
+| AdMob | Ads | Built-in catalog | 5 methods, 2 components |
+| Firebase Analytics | Trackers | Built-in catalog | 3 methods, 1 component |
+| guru/ads/fusion | Ads | Custom discovery | 3 methods |
+| ... | | | |
+
+Ask which categories/SDKs to neutralize:
 - `--ads` — only ad SDKs
 - `--trackers` — only tracker/analytics SDKs
 - `--all` — both (default)
+- Optionally exclude specific SDKs
 
 ### Phase 4: Neutralize
 
@@ -113,6 +195,16 @@ bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/neutralize.sh <decoded
 
 # Apply changes (with backups)
 bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/neutralize.sh <decoded-dir> --all
+```
+
+**If Phase 3b produced custom targets**, add `--targets-file` to both commands:
+
+```bash
+# Preview with custom targets
+bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/neutralize.sh <decoded-dir> --all --dry-run --targets-file <decoded-dir>/custom-targets.txt
+
+# Apply with custom targets
+bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/neutralize.sh <decoded-dir> --all --targets-file <decoded-dir>/custom-targets.txt
 ```
 
 Parse the output for `PATCHED:` and `MANIFEST_DISABLED:` lines to build the report.
@@ -130,20 +222,37 @@ After a successful (non-dry-run) neutralization, a `neutralize-manifest.json` is
 
 ### Phase 5: Rebuild & Sign
 
-Rebuild the decoded directory back into a signed APK.
+Rebuild the decoded directory back into a signed APK (or XAPK if the original was an XAPK).
 
-**Action**: Run the rebuild script.
+**Before calling rebuild**, you **MUST ask the user** their signing preference:
+
+> How would you like to sign the rebuilt APK?
+>
+> 1. **Auto-detect** (recommended) — checks for `~/.android/debug.keystore` first, then generates a debug key
+> 2. **Custom keystore** — provide path, alias, and password
+> 3. **No signing** — output unsigned APK (cannot be installed directly)
+
+Map the user's choice to the corresponding flag:
+- Option 1 → `--auto-keystore`
+- Option 2 → `--keystore <file> --key-alias <alias> --store-pass <pass> --key-pass <pass>`
+- Option 3 → `--no-sign`
+
+**Action**: Run the rebuild script with the chosen signing option.
 
 ```bash
-bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/rebuild-apk.sh <decoded-dir> --debug-key
+# Example with auto-keystore (recommended default)
+bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/rebuild-apk.sh <decoded-dir> --auto-keystore
 ```
 
 Options:
-- `-o <output.apk>` — custom output path
-- `--debug-key` — auto-generate debug keystore (default)
+- `-o <output>` — custom output path
+- `--auto-keystore` — auto-detect best keystore (recommended)
+- `--debug-key` — always generate new debug keystore
 - `--keystore <file>` — use a custom keystore
 - `--no-sign` — output unsigned APK
 - `--zipalign` / `--no-zipalign` — control zipalign step
+
+For XAPK input, the rebuild is automatic: the script detects `.xapk-origin/`, re-signs all split APKs with the same keystore, and produces a `.xapk` output. Parse the output for `KEYSTORE_USED:`, `KEYSTORE_SOURCE:`, `SPLIT_SIGNED:`, and `XAPK_ASSEMBLED:` lines.
 
 ### Phase 6: Verify & Report
 
@@ -201,9 +310,12 @@ and privacy compliance only.
 
 ## Output
 
-- Sanitized APK: `<path>`
-- Signed with: debug key / custom keystore
-- Install via: `adb install <path>`
+- Sanitized APK/XAPK: `<path>`
+- Output format: APK (single) / XAPK (split bundle)
+- Signed with: auto-detected debug key / generated debug key / custom keystore
+- Keystore used: `<path>` (source: `KEYSTORE_SOURCE:` value)
+- Install via: `adb install <path>` (APK) or `adb install-multiple <base.apk> <split1.apk> ...` (XAPK)
+- For XAPK: can also use SAI (Split APKs Installer) or unzip and `adb install-multiple *.apk`
 ```
 
 **Next steps to suggest:**

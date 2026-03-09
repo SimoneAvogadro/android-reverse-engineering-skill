@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
 # install-dep.sh — Install a single dependency for Android reverse engineering
 # Usage: install-dep.sh <dependency>
-# Dependencies: java, jadx, vineflower, dex2jar, apktool, adb, smali, apksigner
+# Dependencies: java, jadx, vineflower, dex2jar, apktool, adb, smali, apksigner, zip
+# Compound: neutralize-all (java + apktool + apksigner + zip)
 #
 # Exit codes:
 #   0 — installed successfully
 #   1 — installation failed
 #   2 — requires manual action (e.g. sudo needed but not available)
 set -euo pipefail
+
+# Ensure user-local bin is in PATH (previous installs may have placed tools there)
+if [[ -d "$HOME/.local/bin" ]] && [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+  export PATH="$HOME/.local/bin:$PATH"
+fi
 
 usage() {
   cat <<EOF
@@ -24,6 +30,10 @@ Available dependencies:
   adb          Android Debug Bridge
   smali        Smali/baksmali assembler/disassembler
   apksigner    Android APK signing tool
+  zip          zip archiver (needed for XAPK rebuild)
+
+Compound targets:
+  neutralize-all   Install all SDK neutralizer deps (java, apktool, apksigner, zip)
 
 The script detects your OS and package manager, then:
   - Installs directly if possible (brew, or user-local install)
@@ -434,22 +444,79 @@ install_dex2jar() {
 }
 
 install_apktool() {
+  # Minimum version required by sdk-neutralizer (modern APKs, targetSdk 34+)
+  local MIN_MAJOR=2 MIN_MINOR=9 MIN_PATCH=0
+  local need_install=false
+
   if command -v apktool &>/dev/null; then
-    ok "apktool already installed"
-    return 0
+    local ver_raw
+    ver_raw=$(apktool --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+    if [[ -n "$ver_raw" ]]; then
+      local cur_major cur_minor cur_patch
+      IFS='.' read -r cur_major cur_minor cur_patch <<< "$ver_raw"
+      cur_major=${cur_major:-0}; cur_minor=${cur_minor:-0}; cur_patch=${cur_patch:-0}
+
+      if (( cur_major > MIN_MAJOR )) || \
+         (( cur_major == MIN_MAJOR && cur_minor > MIN_MINOR )) || \
+         (( cur_major == MIN_MAJOR && cur_minor == MIN_MINOR && cur_patch >= MIN_PATCH )); then
+        ok "apktool $ver_raw already installed (>= ${MIN_MAJOR}.${MIN_MINOR}.${MIN_PATCH})"
+        return 0
+      else
+        info "apktool $ver_raw found but >= ${MIN_MAJOR}.${MIN_MINOR}.${MIN_PATCH} is required — upgrading..."
+        need_install=true
+      fi
+    else
+      ok "apktool detected (could not parse version — assuming compatible)"
+      return 0
+    fi
+  else
+    need_install=true
   fi
 
-  case "$PKG_MANAGER" in
-    brew)    info "Installing apktool via Homebrew..."; brew install apktool ;;
-    apt)     pkg_install "apktool" ;;
-    *)       manual "Install apktool from https://apktool.org/docs/install" ;;
-  esac
+  if [[ "$need_install" == true ]]; then
+    # User-local install from GitHub (no sudo needed, takes PATH precedence)
+    info "Installing apktool from GitHub releases to ~/.local/bin..."
+    local tag
+    tag=$(gh_latest_tag "iBotPeaches/Apktool")
+    if [[ -z "$tag" ]]; then
+      tag="v2.10.0"  # fallback known-good version
+      info "Could not fetch latest tag, using fallback: $tag"
+    fi
 
-  if command -v apktool &>/dev/null; then
-    ok "apktool installed"
-  else
-    fail "apktool installation may have failed."
-    exit 1
+    local version="${tag#v}"
+    local install_dir="$HOME/.local/share/apktool"
+    mkdir -p "$install_dir" "$HOME/.local/bin"
+
+    info "Downloading apktool $version..."
+    download "https://bitbucket.org/iBotPeaches/apktool/downloads/apktool_${version}.jar" \
+      "$install_dir/apktool.jar" 2>/dev/null || \
+    download "https://github.com/iBotPeaches/Apktool/releases/download/${tag}/apktool_${version}.jar" \
+      "$install_dir/apktool.jar"
+
+    if [[ ! -f "$install_dir/apktool.jar" ]]; then
+      fail "Failed to download apktool $version."
+      manual "Download from https://apktool.org/docs/install"
+    fi
+
+    # Create wrapper script
+    cat > "$HOME/.local/bin/apktool" <<'WRAPPER'
+#!/usr/bin/env bash
+exec java -jar "$HOME/.local/share/apktool/apktool.jar" "$@"
+WRAPPER
+    chmod +x "$HOME/.local/bin/apktool"
+
+    export PATH="$HOME/.local/bin:$PATH"
+    add_to_profile 'export PATH="$HOME/.local/bin:$PATH"'
+
+    # Verify
+    local installed_ver
+    installed_ver=$("$HOME/.local/bin/apktool" --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+    if [[ -n "$installed_ver" ]]; then
+      ok "apktool $installed_ver installed to $install_dir"
+    else
+      fail "apktool installation may have failed."
+      exit 1
+    fi
   fi
 }
 
@@ -656,6 +723,49 @@ install_apksigner() {
   manual "Install Android SDK build-tools or run: sudo apt install apksigner (Debian/Ubuntu)"
 }
 
+install_zip() {
+  if command -v zip &>/dev/null; then
+    ok "zip already installed"
+    return 0
+  fi
+
+  info "Installing zip..."
+  case "$PKG_MANAGER" in
+    brew)    brew install zip ;;
+    apt)     pkg_install "zip" ;;
+    dnf)     pkg_install "zip" ;;
+    pacman)  pkg_install "zip" ;;
+    *)       manual "Install zip using your system package manager." ;;
+  esac
+
+  if command -v zip &>/dev/null; then
+    ok "zip installed"
+  else
+    fail "zip installation may have failed."
+    exit 1
+  fi
+}
+
+install_neutralize_all() {
+  echo "=== Installing all SDK Neutralizer dependencies ==="
+  echo
+  local failed=()
+  for dep_fn in install_java install_apktool install_apksigner install_zip; do
+    dep_name="${dep_fn#install_}"
+    info "--- $dep_name ---"
+    if ! $dep_fn; then
+      failed+=("$dep_name")
+    fi
+    echo
+  done
+
+  if [[ ${#failed[@]} -gt 0 ]]; then
+    fail "Failed to install: ${failed[*]}"
+    exit 1
+  fi
+  ok "All SDK Neutralizer dependencies installed."
+}
+
 # =====================================================================
 # Dispatch
 # =====================================================================
@@ -669,9 +779,12 @@ case "$DEP" in
   adb)         install_adb ;;
   smali|baksmali)  install_smali ;;
   apksigner)   install_apksigner ;;
+  zip)         install_zip ;;
+  neutralize-all)  install_neutralize_all ;;
   *)
     echo "Error: Unknown dependency '$DEP'" >&2
-    echo "Available: java, jadx, vineflower, dex2jar, apktool, adb, smali, apksigner" >&2
+    echo "Available: java, jadx, vineflower, dex2jar, apktool, adb, smali, apksigner, zip" >&2
+    echo "Compound: neutralize-all" >&2
     exit 1
     ;;
 esac

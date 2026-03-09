@@ -48,15 +48,23 @@ Run the dependency check to ensure all required tools are installed:
 bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/check-neutralize-deps.sh
 ```
 
-If any `INSTALL_REQUIRED:` lines appear, install the missing dependencies:
+If any `INSTALL_REQUIRED:` lines appear, install all dependencies at once:
 
 ```bash
-bash ${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/install-dep.sh <dep>
+bash ${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/install-dep.sh neutralize-all
 ```
+
+If the script exits with code 2 (sudo needed but no TTY — common inside Claude Code), tell the user to run this command in their terminal:
+
+```
+sudo bash <full-path-to>/install-dep.sh neutralize-all
+```
+
+Provide the **full resolved path** (replace `${CLAUDE_PLUGIN_ROOT}` with the actual path) so the user can copy-paste directly.
 
 ### Step 4: Decode APK/XAPK
 
-Decode the APK or XAPK using decode-apk.sh (handles both formats; for XAPKs extracts the base APK automatically):
+Decode the APK or XAPK using decode-apk.sh (handles both formats; for XAPKs extracts and decodes the base APK while preserving the full XAPK structure for rebuild):
 
 ```bash
 # Strip both .apk and .xapk extensions for the output dir name
@@ -65,6 +73,8 @@ bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/decode-apk.sh "$APK_PA
 ```
 
 Verify the decoded directory contains `smali/` and `AndroidManifest.xml` (the script does this automatically and outputs `DECODED_DIR:<path>`).
+
+If the output includes `XAPK_ORIGIN:<path>`, inform the user: "This is an XAPK (split APK bundle). The base APK has been decoded for neutralization, and all split APKs are preserved. During rebuild, all APKs (base + splits) will be re-signed with the same key and reassembled into a new XAPK."
 
 ### Step 5: Identify targets
 
@@ -102,18 +112,46 @@ Parse the `PATCHED:` and `MANIFEST_DISABLED:` output lines for the report.
 
 ### Step 8: Rebuild & sign
 
-Rebuild the APK with a debug signing key:
+**Before rebuilding**, ask the user their signing preference:
+
+> How would you like to sign the rebuilt APK?
+>
+> 1. **Auto-detect** (recommended) — checks `~/.android/debug.keystore` first, then generates a debug key
+> 2. **Custom keystore** — provide path, alias, and password
+> 3. **No signing** — output unsigned APK
+
+Then rebuild with the appropriate flag:
 
 ```bash
-bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/rebuild-apk.sh "${DECODED_DIR}" --debug-key
+# Auto-detect keystore (recommended)
+bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/rebuild-apk.sh "${DECODED_DIR}" --auto-keystore
+
+# Or with custom keystore
+bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/rebuild-apk.sh "${DECODED_DIR}" --keystore /path/to/keystore
+
+# Or unsigned
+bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/rebuild-apk.sh "${DECODED_DIR}" --no-sign
 ```
+
+Parse the output for:
+- `KEYSTORE_USED:<path>` — which keystore was used
+- `KEYSTORE_SOURCE:<source>` — how it was resolved (debug-standard, debug-previous, debug-generated, custom)
+- `SPLIT_SIGNED:<filename>` — each re-signed split APK (XAPK only)
+- `XAPK_ASSEMBLED:<path>` — final XAPK output (XAPK only)
+
+For XAPK output: inform the user that install requires `adb install-multiple` or a split APK installer (SAI).
 
 ### Step 9: Report & next steps
 
 Generate a neutralization report following the format in `${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/SKILL.md` (Phase 6). **The report must include the "Side Effects & Legal Notice" section.**
 
+Include in the report:
+- **Output format**: APK or XAPK (split bundle)
+- **Keystore used**: path and source (from `KEYSTORE_USED:` / `KEYSTORE_SOURCE:` output)
+- **Install command**: `adb install <path>` for APK, `adb install-multiple <base.apk> <splits...>` for XAPK
+
 Tell the user what they can do next:
-- **Test thoroughly**: "Install via `adb install <apk>` and test for crashes — especially features tied to ads or analytics"
+- **Test thoroughly**: for APK: "Install via `adb install <apk>`"; for XAPK: "Install via `adb install-multiple` or use SAI (Split APKs Installer)" — test for crashes, especially features tied to ads or analytics
 - **Verify**: "I can re-run entry point detection on the rebuilt APK to confirm neutralization"
 - **Custom targets**: "If the app uses obfuscated SDK calls, provide a targets file for additional patching"
 - **Deep analysis**: "Run `/find-trackers` or `/find-ads` for full SDK analysis"

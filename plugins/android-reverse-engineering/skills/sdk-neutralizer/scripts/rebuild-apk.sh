@@ -9,17 +9,26 @@
 #   2 — manual action needed (missing tools)
 set -euo pipefail
 
+# Ensure user-local bin is in PATH (install-dep.sh installs tools there)
+if [[ -d "$HOME/.local/bin" ]] && [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+  export PATH="$HOME/.local/bin:$PATH"
+fi
+
 usage() {
   cat <<EOF
 Usage: rebuild-apk.sh <decoded-dir> [OPTIONS]
 
 Rebuild an apktool-decoded APK directory back into a signed APK.
+If the decoded dir contains .xapk-origin/ (from decode-apk.sh), automatically
+reassembles a complete XAPK with all split APKs re-signed.
 
 Arguments:
   <decoded-dir>   Path to the apktool-decoded APK directory
 
 Options:
-  -o, --output <file>     Output APK path (default: <decoded-dir>-neutralized.apk)
+  -o, --output <file>     Output path (default: <decoded-dir>-neutralized.apk/.xapk)
+  --auto-keystore         Auto-detect best keystore: ~/.android/debug.keystore,
+                          then previous .neutralizer-debug.keystore, then generate new
   --debug-key             Sign with an auto-generated debug keystore (default)
   --keystore <file>       Path to a custom keystore file
   --key-alias <alias>     Key alias within the keystore (default: key0)
@@ -36,6 +45,10 @@ Output:
   BUILD_WARNING:Resources were not recompiled (--no-res fallback)
   SIGN_OK:<output-apk>
   VERIFY_OK:<output-apk>
+  KEYSTORE_USED:<path>
+  KEYSTORE_SOURCE:debug-standard|debug-previous|debug-generated|custom
+  SPLIT_SIGNED:<filename>       (XAPK only)
+  XAPK_ASSEMBLED:<output-xapk>  (XAPK only)
 EOF
   exit 0
 }
@@ -47,6 +60,7 @@ EOF
 DECODED_DIR=""
 OUTPUT=""
 USE_DEBUG_KEY=true
+USE_AUTO_KEYSTORE=false
 KEYSTORE=""
 KEY_ALIAS="key0"
 KEY_PASS="android"
@@ -63,7 +77,8 @@ while [[ $# -gt 0 ]]; do
       shift
       if [[ $# -eq 0 ]]; then echo "Error: --output requires a file argument" >&2; exit 1; fi
       OUTPUT="$1"; shift ;;
-    --debug-key)     USE_DEBUG_KEY=true; shift ;;
+    --auto-keystore) USE_AUTO_KEYSTORE=true; USE_DEBUG_KEY=false; shift ;;
+    --debug-key)     USE_DEBUG_KEY=true; USE_AUTO_KEYSTORE=false; shift ;;
     --keystore)
       shift
       if [[ $# -eq 0 ]]; then echo "Error: --keystore requires a file argument" >&2; exit 1; fi
@@ -100,11 +115,21 @@ if [[ ! -d "$DECODED_DIR" ]]; then
   exit 1
 fi
 
-# Default output name
+# Auto-detect XAPK origin
+IS_XAPK=false
+XAPK_ORIGIN_DIR="$DECODED_DIR/.xapk-origin"
+if [[ -f "$XAPK_ORIGIN_DIR/metadata.json" ]]; then
+  IS_XAPK=true
+fi
+
+# Default output name — .xapk if original was XAPK, .apk otherwise
 if [[ -z "$OUTPUT" ]]; then
-  # Strip trailing slash
   local_dir="${DECODED_DIR%/}"
-  OUTPUT="${local_dir}-neutralized.apk"
+  if [[ "$IS_XAPK" == true ]]; then
+    OUTPUT="${local_dir}-neutralized.xapk"
+  else
+    OUTPUT="${local_dir}-neutralized.apk"
+  fi
 fi
 
 # =====================================================================
@@ -134,6 +159,23 @@ if [[ "$DO_SIGN" == true ]]; then
     SIGNER="jarsigner"
   else
     fail "Neither apksigner nor jarsigner found. Install apksigner or use --no-sign."
+    exit 1
+  fi
+fi
+
+# XAPK requires apksigner (v2/v3 signatures needed for split APKs on Android 7+)
+if [[ "$IS_XAPK" == true ]] && [[ "$DO_SIGN" == true ]] && [[ "$SIGNER" != "apksigner" ]]; then
+  fail "XAPK rebuild requires apksigner for APK Signature Scheme v2/v3."
+  echo "  jarsigner only supports v1 signatures, which do not work with split APKs on Android 7+." >&2
+  echo "  Install apksigner (part of Android SDK build-tools) or use --no-sign." >&2
+  exit 1
+fi
+
+# XAPK rebuild requires zip
+if [[ "$IS_XAPK" == true ]]; then
+  if ! command -v zip &>/dev/null; then
+    fail "XAPK rebuild requires 'zip' command to assemble the final XAPK."
+    echo "  Install zip: apt install zip / brew install zip" >&2
     exit 1
   fi
 fi
@@ -243,16 +285,68 @@ fi
 # =====================================================================
 
 if [[ "$DO_SIGN" == false ]]; then
-  cp "$ALIGNED_APK" "$OUTPUT"
-  ok "Unsigned APK saved to: $OUTPUT"
-  echo "BUILD_OK:$OUTPUT"
-  echo
-  echo "WARNING: APK is unsigned and cannot be installed without signing."
+  if [[ "$IS_XAPK" == true ]]; then
+    # For unsigned XAPK, just output the base APK — cannot assemble unsigned XAPK
+    cp "$ALIGNED_APK" "$OUTPUT"
+    ok "Unsigned base APK saved to: $OUTPUT"
+    echo "BUILD_OK:$OUTPUT"
+    echo
+    echo "WARNING: APK is unsigned and cannot be installed without signing."
+    echo "         XAPK assembly skipped (split APKs require signing for Android 7+)."
+    echo "         Split APKs are preserved in: $XAPK_ORIGIN_DIR/splits/"
+  else
+    cp "$ALIGNED_APK" "$OUTPUT"
+    ok "Unsigned APK saved to: $OUTPUT"
+    echo "BUILD_OK:$OUTPUT"
+    echo
+    echo "WARNING: APK is unsigned and cannot be installed without signing."
+  fi
   exit 0
 fi
 
-# Generate debug keystore if needed
-if [[ "$USE_DEBUG_KEY" == true ]]; then
+# Resolve keystore
+KEYSTORE_SOURCE=""
+
+if [[ "$USE_AUTO_KEYSTORE" == true ]]; then
+  # Priority 1: Android SDK standard debug keystore
+  ANDROID_DEBUG_KS="$HOME/.android/debug.keystore"
+  if [[ -f "$ANDROID_DEBUG_KS" ]]; then
+    KEYSTORE="$ANDROID_DEBUG_KS"
+    KEY_ALIAS="androiddebugkey"
+    KEY_PASS="android"
+    STORE_PASS="android"
+    KEYSTORE_SOURCE="debug-standard"
+    info "Using Android SDK debug keystore: $KEYSTORE"
+  fi
+
+  # Priority 2: Previous neutralizer debug keystore
+  if [[ -z "$KEYSTORE_SOURCE" ]]; then
+    PREV_DEBUG_KS="$DECODED_DIR/.neutralizer-debug.keystore"
+    if [[ -f "$PREV_DEBUG_KS" ]]; then
+      KEYSTORE="$PREV_DEBUG_KS"
+      KEYSTORE_SOURCE="debug-previous"
+      info "Using previous neutralizer debug keystore: $KEYSTORE"
+    fi
+  fi
+
+  # Priority 3: Generate new debug keystore (fallback)
+  if [[ -z "$KEYSTORE_SOURCE" ]]; then
+    KEYSTORE="$DECODED_DIR/.neutralizer-debug.keystore"
+    info "Generating debug keystore..."
+    keytool -genkeypair \
+      -keystore "$KEYSTORE" \
+      -alias "$KEY_ALIAS" \
+      -keyalg RSA \
+      -keysize 2048 \
+      -validity 10000 \
+      -storepass "$STORE_PASS" \
+      -keypass "$KEY_PASS" \
+      -dname "CN=SDK Neutralizer Debug Key, OU=Debug, O=Debug, L=Unknown, ST=Unknown, C=US" \
+      2>/dev/null
+    ok "Debug keystore generated: $KEYSTORE"
+    KEYSTORE_SOURCE="debug-generated"
+  fi
+elif [[ "$USE_DEBUG_KEY" == true ]]; then
   KEYSTORE="$DECODED_DIR/.neutralizer-debug.keystore"
   if [[ ! -f "$KEYSTORE" ]]; then
     info "Generating debug keystore..."
@@ -268,12 +362,19 @@ if [[ "$USE_DEBUG_KEY" == true ]]; then
       2>/dev/null
     ok "Debug keystore generated: $KEYSTORE"
   fi
+  KEYSTORE_SOURCE="debug-generated"
+else
+  # Custom keystore provided via --keystore
+  KEYSTORE_SOURCE="custom"
 fi
 
 if [[ ! -f "$KEYSTORE" ]]; then
   fail "Keystore not found: $KEYSTORE"
   exit 1
 fi
+
+echo "KEYSTORE_USED:$KEYSTORE"
+echo "KEYSTORE_SOURCE:$KEYSTORE_SOURCE"
 
 info "Signing APK with $SIGNER..."
 
@@ -331,16 +432,107 @@ elif [[ "$SIGNER" == "jarsigner" ]]; then
 fi
 
 # =====================================================================
+# Step 5: XAPK assembly (if original was XAPK)
+# =====================================================================
+
+if [[ "$IS_XAPK" == true ]] && [[ "$DO_SIGN" == true ]]; then
+  echo
+  echo "=== Assembling XAPK ==="
+
+  XAPK_WORKDIR=$(mktemp -d "${TMPDIR:-/tmp}/xapk-rebuild-XXXXXX")
+  xapk_cleanup() { rm -rf "$XAPK_WORKDIR"; }
+  trap xapk_cleanup EXIT
+
+  # Read base APK name from metadata
+  BASE_APK_NAME=$(sed -n 's/.*"base_apk"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$XAPK_ORIGIN_DIR/metadata.json" | head -1)
+  if [[ -z "$BASE_APK_NAME" ]]; then
+    BASE_APK_NAME="base.apk"
+  fi
+
+  # Copy signed base APK
+  cp "$OUTPUT" "$XAPK_WORKDIR/$BASE_APK_NAME"
+  info "Copied signed base APK as $BASE_APK_NAME"
+
+  # Re-sign and copy each split APK
+  if [[ -d "$XAPK_ORIGIN_DIR/splits" ]]; then
+    for split_apk in "$XAPK_ORIGIN_DIR/splits/"*.apk; do
+      if [[ ! -f "$split_apk" ]]; then continue; fi
+      split_name=$(basename "$split_apk")
+      info "Signing split: $split_name"
+      apksigner sign \
+        --ks "$KEYSTORE" \
+        --ks-key-alias "$KEY_ALIAS" \
+        --ks-pass "pass:$STORE_PASS" \
+        --key-pass "pass:$KEY_PASS" \
+        --out "$XAPK_WORKDIR/$split_name" \
+        "$split_apk"
+      echo "SPLIT_SIGNED:$split_name"
+    done
+  fi
+
+  # Copy manifest.json and icon from .xapk-origin/
+  if [[ -f "$XAPK_ORIGIN_DIR/manifest.json" ]]; then
+    cp "$XAPK_ORIGIN_DIR/manifest.json" "$XAPK_WORKDIR/"
+  fi
+  for icon_file in "$XAPK_ORIGIN_DIR"/icon.png "$XAPK_ORIGIN_DIR"/icon.jpg; do
+    if [[ -f "$icon_file" ]]; then
+      cp "$icon_file" "$XAPK_WORKDIR/"
+      break
+    fi
+  done
+
+  # Assemble XAPK (zip with no compression for APKs)
+  # Make output path absolute for the subshell cd
+  XAPK_OUTPUT=$(realpath -m "$OUTPUT" 2>/dev/null || echo "$(pwd)/$OUTPUT")
+  # Remove the base APK output (it's now inside the XAPK)
+  rm -f "$XAPK_OUTPUT" 2>/dev/null || true
+
+  (cd "$XAPK_WORKDIR" && zip -r -0 "$XAPK_OUTPUT" . 2>&1) || {
+    fail "Failed to assemble XAPK archive"
+    exit 1
+  }
+
+  if [[ ! -f "$XAPK_OUTPUT" ]]; then
+    fail "XAPK output not found at: $XAPK_OUTPUT"
+    exit 1
+  fi
+  # Update OUTPUT to the absolute path used
+  OUTPUT="$XAPK_OUTPUT"
+
+  ok "XAPK assembled: $XAPK_OUTPUT"
+  echo "XAPK_ASSEMBLED:$XAPK_OUTPUT"
+
+  # Clean up workdir
+  xapk_cleanup
+  trap - EXIT
+fi
+
+# =====================================================================
 # Summary
 # =====================================================================
 
 echo
 echo "=== Rebuild Complete ==="
-echo "Output APK: $OUTPUT"
-echo "Signed with: $SIGNER ($( [[ "$USE_DEBUG_KEY" == true ]] && echo "debug key" || echo "custom keystore" ))"
 
-APK_SIZE=$(stat -f%z "$OUTPUT" 2>/dev/null || stat -c%s "$OUTPUT" 2>/dev/null || echo "unknown")
-echo "APK size: $APK_SIZE bytes"
+if [[ "$IS_XAPK" == true ]]; then
+  echo "Output XAPK: $OUTPUT"
+else
+  echo "Output APK: $OUTPUT"
+fi
+
+if [[ "$DO_SIGN" == true ]]; then
+  SIGN_DESC="$KEYSTORE_SOURCE"
+  case "$KEYSTORE_SOURCE" in
+    debug-standard)  SIGN_DESC="Android SDK debug key (~/.android/debug.keystore)" ;;
+    debug-previous)  SIGN_DESC="previous neutralizer debug key" ;;
+    debug-generated) SIGN_DESC="auto-generated debug key" ;;
+    custom)          SIGN_DESC="custom keystore ($KEYSTORE)" ;;
+  esac
+  echo "Signed with: $SIGNER ($SIGN_DESC)"
+fi
+
+OUTPUT_SIZE=$(stat -f%z "$OUTPUT" 2>/dev/null || stat -c%s "$OUTPUT" 2>/dev/null || echo "unknown")
+echo "Output size: $OUTPUT_SIZE bytes"
 
 if [[ "$BUILD_USED_NO_RES" == true ]]; then
   echo
@@ -351,6 +543,12 @@ fi
 
 echo
 echo "WARNING: Play Integrity / SafetyNet will FAIL — expected for enterprise sideloading."
-echo "Install via: adb install $OUTPUT"
+if [[ "$IS_XAPK" == true ]]; then
+  echo "Install via: adb install-multiple <base.apk> <split1.apk> <split2.apk> ..."
+  echo "         or: use a split APK installer (e.g., SAI — Split APKs Installer)"
+  echo "         or: unzip the XAPK and run: adb install-multiple *.apk"
+else
+  echo "Install via: adb install $OUTPUT"
+fi
 
 exit 0

@@ -7,6 +7,11 @@ REQUIRED_JAVA_MAJOR=17
 missing_required=()
 missing_optional=()
 
+# Ensure user-local bin is in PATH (install-dep.sh installs tools there)
+if [[ -d "$HOME/.local/bin" ]] && [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+  export PATH="$HOME/.local/bin:$PATH"
+fi
+
 echo "=== SDK Neutralizer: Dependency Check ==="
 echo
 
@@ -69,11 +74,15 @@ fi
 
 # --- apksigner or jarsigner (at least one required) ---
 signer_found=false
+has_apksigner=false
 if command -v apksigner &>/dev/null; then
   echo "[OK] apksigner detected"
   signer_found=true
+  has_apksigner=true
 elif command -v jarsigner &>/dev/null; then
   echo "[OK] jarsigner detected (fallback signer)"
+  echo "     Note: XAPK rebuild requires apksigner (APK Signature Scheme v2/v3)."
+  echo "           jarsigner only supports v1 signatures — insufficient for split APKs."
   signer_found=true
 fi
 if [[ "$signer_found" == false ]]; then
@@ -111,6 +120,14 @@ else
   fi
 fi
 
+# --- zip (optional, required for XAPK rebuild) ---
+if command -v zip &>/dev/null; then
+  echo "[OK] zip detected (required for XAPK rebuild)"
+else
+  echo "[MISSING] zip not found (required for XAPK rebuild — install: apt install zip / brew install zip)"
+  missing_optional+=("zip")
+fi
+
 # --- Machine-readable summary ---
 echo
 if [[ ${#missing_required[@]} -gt 0 ]]; then
@@ -131,7 +148,14 @@ echo
 
 if [[ ${#missing_required[@]} -gt 0 ]]; then
   echo "*** ${#missing_required[@]} required dependency/ies missing. ***"
-  echo "Run install-dep.sh <name> to install, or see references/neutralization-guide.md."
+  echo
+  echo "Install all neutralizer dependencies at once:"
+  echo "  bash install-dep.sh neutralize-all"
+  echo
+  echo "If sudo is needed (e.g. inside Claude Code where there's no TTY):"
+  echo "  sudo bash install-dep.sh neutralize-all"
+  echo
+  echo "Or install individually: install-dep.sh <name>"
   exit 1
 else
   if [[ ${#missing_optional[@]} -gt 0 ]]; then

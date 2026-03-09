@@ -9,6 +9,11 @@ errors=0
 missing_required=()
 missing_optional=()
 
+# Ensure user-local bin is in PATH (install-dep.sh installs tools there)
+if [[ -d "$HOME/.local/bin" ]] && [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+  export PATH="$HOME/.local/bin:$PATH"
+fi
+
 echo "=== Android Reverse Engineering: Dependency Check ==="
 echo
 

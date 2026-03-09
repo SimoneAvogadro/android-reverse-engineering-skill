@@ -34,6 +34,9 @@ bash scripts/check-deps.sh
 # Install a dependency (auto-detects OS/package manager)
 bash scripts/install-dep.sh <dep>   # e.g., jadx, vineflower, dex2jar
 
+# Install ALL neutralizer dependencies at once (java, apktool, apksigner, zip)
+bash scripts/install-dep.sh neutralize-all
+
 # Decompile an APK/JAR/AAR/XAPK
 bash scripts/decompile.sh [--engine jadx|fernflower|both] [--deobf] [--no-res] [-o outdir] <file>
 
@@ -61,14 +64,14 @@ SDK neutralizer scripts under `plugins/android-reverse-engineering/skills/sdk-ne
 # Check neutralization dependencies (including apktool >= 2.9.0)
 bash check-neutralize-deps.sh
 
-# Decode APK or XAPK (extracts base APK from XAPK automatically)
+# Decode APK or XAPK (for XAPK: decodes base APK, preserves splits in .xapk-origin/)
 bash decode-apk.sh <file.apk|file.xapk> [-o <decoded-dir>]
 
 # Neutralize SDK entry points in decoded APK (dry-run first)
 bash neutralize.sh <decoded-dir> [--ads|--trackers|--all] [--dry-run] [--no-backup] [--no-manifest] [--targets-file <file>] [--replay] [--no-save-manifest]
 
-# Rebuild and sign neutralized APK
-bash rebuild-apk.sh <decoded-dir> [--debug-key|--keystore <file>] [-o <output>] [--no-sign] [--no-res] [--zipalign]
+# Rebuild and sign neutralized APK (auto-reassembles XAPK if .xapk-origin/ exists)
+bash rebuild-apk.sh <decoded-dir> [--auto-keystore|--debug-key|--keystore <file>] [-o <output>] [--no-sign] [--no-res] [--zipalign]
 ```
 
 ## Architecture

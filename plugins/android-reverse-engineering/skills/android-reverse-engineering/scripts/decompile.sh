@@ -2,6 +2,11 @@
 # decompile.sh — Decompile APK/JAR/AAR using jadx, fernflower, or both
 set -euo pipefail
 
+# Ensure user-local bin is in PATH (install-dep.sh installs tools there)
+if [[ -d "$HOME/.local/bin" ]] && [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+  export PATH="$HOME/.local/bin:$PATH"
+fi
+
 usage() {
   cat <<EOF
 Usage: decompile.sh [OPTIONS] <file>

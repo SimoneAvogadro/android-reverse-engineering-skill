@@ -8,14 +8,20 @@
 #   1 — error (invalid input, missing tools, decode failed)
 set -euo pipefail
 
+# Ensure user-local bin is in PATH (install-dep.sh installs tools there)
+if [[ -d "$HOME/.local/bin" ]] && [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+  export PATH="$HOME/.local/bin:$PATH"
+fi
+
 usage() {
   cat <<EOF
 Usage: decode-apk.sh <file> [OPTIONS]
 
 Decode an APK or XAPK file into smali and resources using apktool.
 
-For XAPK files, extracts the base APK from the archive and decodes it.
-Split APKs (config.*.apk) are skipped with a warning.
+For XAPK files, extracts the base APK and decodes it. Split APKs and
+XAPK metadata are preserved in .xapk-origin/ inside the decoded directory
+so that rebuild-apk.sh can reassemble a complete XAPK.
 
 Arguments:
   <file>              Path to .apk or .xapk file
@@ -28,6 +34,7 @@ Options:
 
 Output:
   DECODED_DIR:<path>
+  XAPK_ORIGIN:<path>   (only for XAPK input)
 EOF
   exit 0
 }
@@ -91,20 +98,21 @@ if [[ -z "$OUTPUT_DIR" ]]; then
 fi
 
 # =====================================================================
-# XAPK handling — extract base APK
+# XAPK handling — extract base APK, preserve structure for rebuild
 # =====================================================================
 
 APK_TO_DECODE="$INPUT_FILE_ABS"
 XAPK_TMPDIR=""
+IS_XAPK=false
 
 cleanup_xapk() {
   if [[ -n "$XAPK_TMPDIR" ]] && [[ -d "$XAPK_TMPDIR" ]]; then
     rm -rf "$XAPK_TMPDIR"
   fi
 }
-trap cleanup_xapk EXIT
 
 if [[ "$ext_lower" == "xapk" ]]; then
+  IS_XAPK=true
   echo "=== Extracting XAPK archive ==="
   XAPK_TMPDIR=$(mktemp -d "${TMPDIR:-/tmp}/xapk-decode-XXXXXX")
   unzip -qo "$INPUT_FILE_ABS" -d "$XAPK_TMPDIR"
@@ -122,6 +130,7 @@ if [[ "$ext_lower" == "xapk" ]]; then
 
   if [[ ${#all_apks[@]} -eq 0 ]]; then
     echo "Error: No APK files found inside XAPK archive." >&2
+    rm -rf "$XAPK_TMPDIR"
     exit 1
   fi
 
@@ -158,23 +167,24 @@ if [[ "$ext_lower" == "xapk" ]]; then
 
   if [[ -z "$base_apk" ]]; then
     echo "Error: Could not identify a base APK inside the XAPK." >&2
+    rm -rf "$XAPK_TMPDIR"
     exit 1
   fi
 
+  BASE_APK_NAME=$(basename "$base_apk")
   echo
-  echo "Selected base APK: $(basename "$base_apk")"
+  echo "Selected base APK: $BASE_APK_NAME"
 
-  # Warn about skipped splits
-  skipped=0
+  # List split APKs
+  split_apks=()
   for f in "${all_apks[@]}"; do
     if [[ "$f" != "$base_apk" ]]; then
-      echo "  [skipped] $(basename "$f")"
-      skipped=$((skipped + 1))
+      split_apks+=("$(basename "$f")")
+      echo "  [split] $(basename "$f")"
     fi
   done
-  if (( skipped > 0 )); then
-    echo "Warning: $skipped split APK(s) skipped. Only the base APK is decoded."
-    echo "         Split APKs contain config-specific resources (density, locale, ABI)."
+  if (( ${#split_apks[@]} > 0 )); then
+    echo "${#split_apks[@]} split APK(s) preserved in .xapk-origin/splits/ for rebuild."
   fi
   echo
 
@@ -220,6 +230,101 @@ fi
 if [[ ! -f "$OUTPUT_DIR/AndroidManifest.xml" ]]; then
   echo "Warning: AndroidManifest.xml not found in decoded output." >&2
 fi
+
+# =====================================================================
+# Preserve XAPK structure for rebuild
+# =====================================================================
+
+if [[ "$IS_XAPK" == true ]] && [[ -n "$XAPK_TMPDIR" ]]; then
+  echo
+  echo "=== Preserving XAPK structure ==="
+
+  XAPK_ORIGIN_DIR="$OUTPUT_DIR/.xapk-origin"
+  mkdir -p "$XAPK_ORIGIN_DIR/splits"
+
+  # Copy manifest.json from XAPK
+  if [[ -f "$XAPK_TMPDIR/manifest.json" ]]; then
+    cp "$XAPK_TMPDIR/manifest.json" "$XAPK_ORIGIN_DIR/manifest.json"
+    echo "  Copied manifest.json"
+  fi
+
+  # Copy icon if present
+  for icon_file in "$XAPK_TMPDIR"/icon.png "$XAPK_TMPDIR"/icon.jpg; do
+    if [[ -f "$icon_file" ]]; then
+      cp "$icon_file" "$XAPK_ORIGIN_DIR/"
+      echo "  Copied $(basename "$icon_file")"
+      break
+    fi
+  done
+
+  # Copy split APKs
+  for f in "${all_apks[@]}"; do
+    if [[ "$f" != "$base_apk" ]]; then
+      cp "$f" "$XAPK_ORIGIN_DIR/splits/"
+      echo "  Copied split: $(basename "$f")"
+    fi
+  done
+
+  # Extract metadata from XAPK manifest.json using sed (no jq dependency)
+  xapk_package_name=""
+  xapk_version_code=""
+  xapk_version_name=""
+  if [[ -f "$XAPK_ORIGIN_DIR/manifest.json" ]]; then
+    xapk_package_name=$(sed -n 's/.*"package_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$XAPK_ORIGIN_DIR/manifest.json" | head -1)
+    xapk_version_code=$(sed -n 's/.*"version_code"[[:space:]]*:[[:space:]]*"\{0,1\}\([0-9]*\)"\{0,1\}.*/\1/p' "$XAPK_ORIGIN_DIR/manifest.json" | head -1)
+    xapk_version_name=$(sed -n 's/.*"version_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$XAPK_ORIGIN_DIR/manifest.json" | head -1)
+  fi
+
+  # Detect OBB files (registered but NOT copied — can be gigabytes)
+  obb_json="[]"
+  obb_entries=()
+  while IFS= read -r -d '' obb_file; do
+    obb_name=$(basename "$obb_file")
+    obb_size=$(stat -c%s "$obb_file" 2>/dev/null || stat -f%z "$obb_file" 2>/dev/null || echo 0)
+    obb_entries+=("{\"name\": \"$obb_name\", \"size_bytes\": $obb_size}")
+  done < <(find "$XAPK_TMPDIR" -name "*.obb" -print0 2>/dev/null)
+  if (( ${#obb_entries[@]} > 0 )); then
+    obb_json="["
+    for i in "${!obb_entries[@]}"; do
+      if (( i > 0 )); then obb_json+=", "; fi
+      obb_json+="${obb_entries[$i]}"
+    done
+    obb_json+="]"
+    echo "  OBB files detected (not copied — registered in metadata only):"
+    for entry in "${obb_entries[@]}"; do echo "    $entry"; done
+  fi
+
+  # Build split_apks JSON array
+  splits_json="["
+  for i in "${!split_apks[@]}"; do
+    if (( i > 0 )); then splits_json+=", "; fi
+    splits_json+="\"${split_apks[$i]}\""
+  done
+  splits_json+="]"
+
+  # Write metadata.json
+  decoded_ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date +"%Y-%m-%dT%H:%M:%SZ")
+  printf '{\n  "format": "xapk",\n  "original_file": "%s",\n  "package_name": "%s",\n  "version_code": "%s",\n  "version_name": "%s",\n  "base_apk": "%s",\n  "split_apks": %s,\n  "obb_files": %s,\n  "decoded_timestamp": "%s"\n}\n' \
+    "$INPUT_FILE_ABS" \
+    "$xapk_package_name" \
+    "$xapk_version_code" \
+    "$xapk_version_name" \
+    "$BASE_APK_NAME" \
+    "$splits_json" \
+    "$obb_json" \
+    "$decoded_ts" \
+    > "$XAPK_ORIGIN_DIR/metadata.json"
+  echo "  Wrote metadata.json"
+
+  echo
+  echo "XAPK structure preserved in: $XAPK_ORIGIN_DIR"
+  echo "XAPK_ORIGIN:$XAPK_ORIGIN_DIR"
+fi
+
+# Clean up XAPK tmpdir now that everything is copied
+cleanup_xapk
+# Set trap to no-op since we already cleaned up
+trap - EXIT
 
 echo
 echo "Decoded successfully: $OUTPUT_DIR"

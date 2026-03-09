@@ -25,7 +25,8 @@ A Claude Code skill that decompiles Android APK/XAPK/JAR/AAR files, **extracts H
 
 **For SDK neutralization (`/neutralize`):**
 - [apktool](https://apktool.org/) (required) — APK decode/rebuild
-- apksigner or jarsigner (required) — APK signing
+- apksigner or jarsigner (required) — APK signing (apksigner required for XAPK)
+- zip (required for XAPK rebuild)
 
 See `plugins/android-reverse-engineering/skills/android-reverse-engineering/references/setup-guide.md` for detailed installation instructions.
 
@@ -133,6 +134,9 @@ bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scri
 bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/install-dep.sh jadx
 bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/install-dep.sh vineflower
 
+# Install ALL neutralizer dependencies at once (java, apktool, apksigner, zip)
+bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/install-dep.sh neutralize-all
+
 # Decompile APK with jadx (default)
 bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/decompile.sh app.apk
 
@@ -164,10 +168,15 @@ bash plugins/android-reverse-engineering/skills/ad-analysis/scripts/find-ads.sh 
 bash plugins/android-reverse-engineering/skills/sdk-neutralizer/scripts/decode-apk.sh app.apk -o app-decoded
 bash plugins/android-reverse-engineering/skills/sdk-neutralizer/scripts/neutralize.sh app-decoded --all --dry-run
 bash plugins/android-reverse-engineering/skills/sdk-neutralizer/scripts/neutralize.sh app-decoded --all
-bash plugins/android-reverse-engineering/skills/sdk-neutralizer/scripts/rebuild-apk.sh app-decoded --debug-key
+bash plugins/android-reverse-engineering/skills/sdk-neutralizer/scripts/rebuild-apk.sh app-decoded --auto-keystore
 
-# XAPK support — decode-apk.sh extracts the base APK automatically
+# XAPK full round-trip — decode preserves splits, rebuild reassembles XAPK
 bash plugins/android-reverse-engineering/skills/sdk-neutralizer/scripts/decode-apk.sh app-bundle.xapk -o app-decoded
+# .xapk-origin/ now contains splits/, manifest.json, metadata.json
+bash plugins/android-reverse-engineering/skills/sdk-neutralizer/scripts/neutralize.sh app-decoded --all --dry-run
+bash plugins/android-reverse-engineering/skills/sdk-neutralizer/scripts/neutralize.sh app-decoded --all
+bash plugins/android-reverse-engineering/skills/sdk-neutralizer/scripts/rebuild-apk.sh app-decoded --auto-keystore
+# → produces app-decoded-neutralized.xapk with all splits re-signed
 
 # Replay previous patches after re-decoding
 bash plugins/android-reverse-engineering/skills/sdk-neutralizer/scripts/neutralize.sh app-decoded --replay
