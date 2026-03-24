@@ -15,6 +15,11 @@ This skill requires **Java JDK 17+** and **jadx** to be installed. **Fernflower/
 bash ${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/check-deps.sh
 ```
 
+On Windows (PowerShell):
+```powershell
+& "${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/check-deps.ps1"
+```
+
 If anything is missing, follow the installation instructions in `${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/references/setup-guide.md`.
 
 ## Workflow
@@ -29,6 +34,11 @@ Before decompiling, confirm that the required tools are available — and instal
 bash ${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/check-deps.sh
 ```
 
+On Windows (PowerShell):
+```powershell
+& "${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/check-deps.ps1"
+```
+
 The output contains machine-readable lines:
 - `INSTALL_REQUIRED:<dep>` — must be installed before proceeding
 - `INSTALL_OPTIONAL:<dep>` — recommended but not blocking
@@ -39,10 +49,17 @@ The output contains machine-readable lines:
 bash ${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/install-dep.sh <dep>
 ```
 
+On Windows (PowerShell):
+```powershell
+& "${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/install-dep.ps1" <dep>
+```
+
 The install script detects the OS and package manager, then:
 - Installs without sudo when possible (downloads to `~/.local/share/`, symlinks in `~/.local/bin/`)
 - Uses sudo and the system package manager when necessary (apt, dnf, pacman)
 - If sudo is needed but unavailable or the user declines, it prints the exact manual command and exits with code 2 — show these instructions to the user
+
+**Windows notes**: The PowerShell install script uses `winget`, `scoop`, or `choco` (in that order). If none are available, it downloads directly to `%USERPROFILE%\.local\share\` and adds the directory to the user's PATH. After running `install-dep.ps1`, the PATH is persisted but the current terminal session may not see it. The `check-deps.ps1` and `decompile.ps1` scripts automatically refresh PATH from the user environment, so re-running them will find newly installed tools without restarting the terminal.
 
 **For optional dependencies**, ask the user if they want to install them. Vineflower and dex2jar are recommended for best results.
 
@@ -58,7 +75,14 @@ Use the decompile wrapper script to process the target file. The script supports
 bash ${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/decompile.sh [OPTIONS] <file>
 ```
 
+On Windows (PowerShell):
+```powershell
+& "${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/decompile.ps1" [OPTIONS] <file>
+```
+
 For **XAPK** files (ZIP bundles containing multiple APKs, used by APKPure and similar stores): the script automatically extracts the archive, identifies all APK files inside (base + split APKs), and decompiles each one into a separate subdirectory. The XAPK manifest is copied to the output for reference.
+
+**Split/bundled APK detection**: Some APKs are actually bundle wrappers — the outer APK contains `base.apk` plus `split_config.*.apk` files inside its resources directory. When this happens, jadx will decompile the thin wrapper and produce very few Java files. The decompile scripts automatically detect this (≤10 Java files + inner APKs present) and re-decompile `base.apk` into an `<output>/base/` subdirectory. Config-only splits (ABI, language, density) are skipped. The main decompiled source will be in `<output>/base/sources/`.
 
 Options:
 - `-o <dir>` — Custom output directory (default: `<filename>-decompiled`)
@@ -137,6 +161,11 @@ Find all API endpoints and produce structured documentation.
 bash ${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/find-api-calls.sh <output>/sources/
 ```
 
+On Windows (PowerShell):
+```powershell
+& "${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/find-api-calls.ps1" <output>/sources/
+```
+
 Targeted searches:
 ```bash
 # Only Retrofit
@@ -147,6 +176,18 @@ bash ${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/find-api-c
 
 # Only auth patterns
 bash ${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/find-api-calls.sh <output>/sources/ --auth
+```
+
+On Windows (PowerShell):
+```powershell
+# Only Retrofit
+& "${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/find-api-calls.ps1" <output>/sources/ -Retrofit
+
+# Only hardcoded URLs
+& "${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/find-api-calls.ps1" <output>/sources/ -Urls
+
+# Only auth patterns
+& "${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/find-api-calls.ps1" <output>/sources/ -Auth
 ```
 
 Then, for each discovered endpoint, read the surrounding source code to extract:

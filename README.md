@@ -13,10 +13,12 @@ A Claude Code skill that decompiles Android APK/XAPK/JAR/AAR files and **extract
 ## Requirements
 
 **Required:**
+
 - Java JDK 17+
 - [jadx](https://github.com/skylot/jadx) (CLI)
 
 **Optional (recommended):**
+
 - [Vineflower](https://github.com/Vineflower/vineflower) or [Fernflower](https://github.com/JetBrains/fernflower) — better output on complex Java code
 - [dex2jar](https://github.com/pxb1988/dex2jar) — needed to use Fernflower on APK/DEX files
 
@@ -28,7 +30,7 @@ See `plugins/android-reverse-engineering/skills/android-reverse-engineering/refe
 
 Inside Claude Code, run:
 
-```
+```text
 /plugin marketplace add SimoneAvogadro/android-reverse-engineering-skill
 /plugin install android-reverse-engineering@android-reverse-engineering-skill
 ```
@@ -43,7 +45,7 @@ git clone https://github.com/SimoneAvogadro/android-reverse-engineering-skill.gi
 
 Then in Claude Code:
 
-```
+```text
 /plugin marketplace add /path/to/android-reverse-engineering-skill
 /plugin install android-reverse-engineering@android-reverse-engineering-skill
 ```
@@ -52,7 +54,7 @@ Then in Claude Code:
 
 ### Slash command
 
-```
+```text
 /decompile path/to/app.apk
 ```
 
@@ -100,7 +102,7 @@ bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scri
 
 ## Repository Structure
 
-```
+```text
 android-reverse-engineering-skill/
 ├── .claude-plugin/
 │   └── marketplace.json                    # Marketplace catalog
@@ -118,10 +120,14 @@ android-reverse-engineering-skill/
 │       │       │   ├── api-extraction-patterns.md
 │       │       │   └── call-flow-analysis.md
 │       │       └── scripts/
-│       │           ├── check-deps.sh
+│       │           ├── check-deps.sh       # Bash
+│       │           ├── check-deps.ps1      # PowerShell
 │       │           ├── install-dep.sh
+│       │           ├── install-dep.ps1
 │       │           ├── decompile.sh
-│       │           └── find-api-calls.sh
+│       │           ├── decompile.ps1
+│       │           ├── find-api-calls.sh
+│       │           └── find-api-calls.ps1
 │       └── commands/
 │           └── decompile.md                # /decompile slash command
 ├── LICENSE

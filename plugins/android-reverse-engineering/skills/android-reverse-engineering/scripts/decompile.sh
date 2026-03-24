@@ -370,6 +370,51 @@ if [[ "$ext_lower" == "xapk" ]]; then
   ls -1 "$OUTPUT_DIR/"
 else
   decompile_single "$INPUT_FILE_ABS" "$OUTPUT_DIR" ""
+
+  # --- Split/bundled APK detection ---
+  # Some APKs are bundles: the outer APK contains base.apk + split_config.*.apk
+  # inside the resources directory. jadx will decompile the thin outer wrapper
+  # and produce very few Java files. Detect this and re-decompile base.apk.
+  sources_dir="$OUTPUT_DIR/sources"
+  resources_dir="$OUTPUT_DIR/resources"
+  if [[ -d "$sources_dir" && -d "$resources_dir" ]]; then
+    java_count=$(find "$sources_dir" -name "*.java" -type f 2>/dev/null | wc -l)
+    base_apk=$(find "$resources_dir" -maxdepth 1 -name "base.apk" -type f 2>/dev/null | head -1)
+    inner_apk_count=$(find "$resources_dir" -maxdepth 1 -name "*.apk" -type f 2>/dev/null | wc -l)
+
+    if [[ "$java_count" -le 10 && -n "$base_apk" ]]; then
+      echo
+      echo "=== Split/bundled APK detected ==="
+      echo "Outer APK produced only $java_count Java file(s) but contains $inner_apk_count inner APK(s):"
+      find "$resources_dir" -maxdepth 1 -name "*.apk" -type f -exec basename {} \; | while read -r f; do echo "  - $f"; done
+      echo
+      echo "Decompiling base.apk (contains the actual app code)..."
+      decompile_single "$base_apk" "$OUTPUT_DIR/base" "base.apk"
+
+      # Decompile non-config split APKs
+      while IFS= read -r -d '' split_apk; do
+        split_name=$(basename "$split_apk" .apk)
+        case "$split_name" in
+          base|split_config.*) continue ;;
+        esac
+        echo
+        echo "Decompiling $split_name.apk..."
+        decompile_single "$split_apk" "$OUTPUT_DIR/$split_name" "$split_name.apk"
+      done < <(find "$resources_dir" -maxdepth 1 -name "*.apk" -type f -print0 2>/dev/null)
+
+      # Report skipped config splits
+      config_splits=$(find "$resources_dir" -maxdepth 1 -name "split_config.*.apk" -type f 2>/dev/null)
+      if [[ -n "$config_splits" ]]; then
+        echo
+        echo "Skipped config splits (resource/ABI only):"
+        echo "$config_splits" | while read -r f; do echo "  - $(basename "$f")"; done
+      fi
+
+      echo
+      echo "Main decompiled source is in: $OUTPUT_DIR/base/sources/"
+    fi
+  fi
+
   echo
   echo "=== Decompilation complete ==="
 fi
