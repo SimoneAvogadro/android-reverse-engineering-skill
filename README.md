@@ -1,14 +1,29 @@
 # Android Reverse Engineering & API Extraction — Claude Code skill
 
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0) [![GitHub stars](https://img.shields.io/github/stars/SimoneAvogadro/android-reverse-engineering-skill?style=social)](https://github.com/SimoneAvogadro/android-reverse-engineering-skill/stargazers) [![GitHub last commit](https://img.shields.io/github/last-commit/SimoneAvogadro/android-reverse-engineering-skill)](https://github.com/SimoneAvogadro/android-reverse-engineering-skill/commits/master)
+
 A Claude Code skill that decompiles Android APK/XAPK/JAR/AAR files and **extracts the HTTP APIs** used by the app — Retrofit endpoints, OkHttp calls, hardcoded URLs, authentication patterns — so you can document and reproduce them without the original source code.
+
+## Table of Contents
+
+- [What it does](#what-it-does)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Repository Structure](#repository-structure)
+- [References](#references)
+- [Disclaimer](#disclaimer)
+- [License](#license)
 
 ## What it does
 
-- **Decompiles** APK, XAPK, JAR, and AAR files using jadx and Fernflower/Vineflower (single engine or side-by-side comparison)
-- **Extracts and documents APIs**: Retrofit endpoints, OkHttp calls, hardcoded URLs, auth headers and tokens
-- **Traces call flows** from Activities/Fragments through ViewModels and repositories down to HTTP calls
-- **Analyzes** app structure: manifest, packages, architecture patterns
-- **Handles obfuscated code**: strategies for navigating ProGuard/R8 output
+| Capability | Description |
+|------------|-------------|
+| **Decompile** | APK, XAPK, JAR, and AAR files using jadx and Fernflower/Vineflower (single engine or side-by-side comparison) |
+| **Extract APIs** | Retrofit endpoints, OkHttp calls, hardcoded URLs, auth headers and tokens |
+| **Trace call flows** | From Activities/Fragments through ViewModels and repositories down to HTTP calls |
+| **Analyze structure** | Manifest, packages, architecture patterns |
+| **Handle obfuscation** | Strategies for navigating ProGuard/R8 output |
 
 ## Requirements
 
