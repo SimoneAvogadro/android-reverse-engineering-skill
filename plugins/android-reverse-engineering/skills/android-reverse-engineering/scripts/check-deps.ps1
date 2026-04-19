@@ -68,7 +68,8 @@ if (-not $jadxBin) {
 }
 if ($jadxBin) {
     try {
-        $jadxVersion = & jadx --version 2>$null
+        $jadxCmd = if ($jadxBin -is [string]) { $jadxBin } else { 'jadx' }
+        $jadxVersion = & $jadxCmd --version 2>$null
         Write-Host "[OK] jadx $jadxVersion detected"
     } catch {
         Write-Host "[OK] jadx detected"
