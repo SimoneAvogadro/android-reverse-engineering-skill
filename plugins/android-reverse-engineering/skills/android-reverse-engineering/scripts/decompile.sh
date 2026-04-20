@@ -163,6 +163,8 @@ find_dex2jar() {
 # --- jadx decompilation ---
 run_jadx() {
   local out_dir="$1"
+  local jadx_status=0
+  local count=0
 
   if ! command -v jadx &>/dev/null; then
     echo "Error: jadx is not installed or not in PATH." >&2
@@ -177,20 +179,41 @@ run_jadx() {
   args+=("$INPUT_FILE_ABS")
 
   echo "Running: jadx ${args[*]}"
-  jadx "${args[@]}"
+  if jadx "${args[@]}"; then
+    jadx_status=0
+  else
+    jadx_status=$?
+  fi
 
   echo "jadx output: $out_dir/sources/"
   if [[ -d "$out_dir/sources" ]]; then
-    local count
     count=$(find "$out_dir/sources" -name "*.java" | wc -l)
     echo "Java files decompiled by jadx: $count"
   fi
+
+  if [[ $jadx_status -eq 0 ]]; then
+    return 0
+  fi
+
+  if [[ $count -gt 0 ]]; then
+    echo "Warning: jadx exited with status $jadx_status after writing $count Java files; treating this as partial success." >&2
+    return 2
+  fi
+
+  echo "Error: jadx failed with status $jadx_status and produced no Java output." >&2
+  return 1
 }
 
 # --- Fernflower decompilation ---
 run_fernflower() {
   local out_dir="$1"
   local jar_to_decompile=""
+  local converted_jar=""
+  local intermediate_dir="$out_dir/intermediate"
+  local ff_status=0
+  local d2j_status=0
+  local count=0
+  local ff_timeout_seconds="${FERNFLOWER_TIMEOUT_SECONDS:-900}"
 
   local ff_jar
   if ! ff_jar=$(find_fernflower_jar); then
@@ -211,11 +234,19 @@ run_fernflower() {
     fi
 
     echo "Converting $ext_lower to JAR with dex2jar..."
-    local converted_jar="$out_dir/${BASENAME}-dex2jar.jar"
-    "$d2j" -f -o "$converted_jar" "$INPUT_FILE_ABS" 2>&1 || true
+    mkdir -p "$intermediate_dir"
+    converted_jar="$intermediate_dir/${BASENAME}-dex2jar.jar"
+    if "$d2j" -f -o "$converted_jar" "$INPUT_FILE_ABS" 2>&1; then
+      d2j_status=0
+    else
+      d2j_status=$?
+    fi
     if [[ ! -f "$converted_jar" ]]; then
-      echo "Error: dex2jar conversion failed." >&2
+      echo "Error: dex2jar conversion failed with status $d2j_status." >&2
       return 1
+    fi
+    if [[ $d2j_status -ne 0 ]]; then
+      echo "Warning: dex2jar exited with status $d2j_status but produced $converted_jar; continuing." >&2
     fi
     jar_to_decompile="$converted_jar"
   else
@@ -233,25 +264,83 @@ run_fernflower() {
   ff_args+=("$out_dir")
 
   echo "Running: java -jar $ff_jar ${ff_args[*]}"
-  java -jar "$ff_jar" "${ff_args[@]}"
+  if command -v timeout &>/dev/null && [[ "$ff_timeout_seconds" =~ ^[0-9]+$ ]] && (( ff_timeout_seconds > 0 )); then
+    echo "Fernflower timeout: ${ff_timeout_seconds}s (override with FERNFLOWER_TIMEOUT_SECONDS)"
+    if timeout "${ff_timeout_seconds}s" java -jar "$ff_jar" "${ff_args[@]}"; then
+      ff_status=0
+    else
+      ff_status=$?
+    fi
+  elif java -jar "$ff_jar" "${ff_args[@]}"; then
+    ff_status=0
+  else
+    ff_status=$?
+  fi
 
   # Fernflower outputs a JAR containing .java files — extract it
   local result_jar="$out_dir/$(basename "$jar_to_decompile")"
   if [[ -f "$result_jar" ]]; then
     local sources_dir="$out_dir/sources"
     mkdir -p "$sources_dir"
-    unzip -qo "$result_jar" -d "$sources_dir"
-    rm -f "$result_jar"
-    echo "Fernflower output: $sources_dir/"
-    local count
-    count=$(find "$sources_dir" -name "*.java" | wc -l)
-    echo "Java files decompiled by Fernflower: $count"
+    if unzip -qo "$result_jar" -d "$sources_dir"; then
+      rm -f "$result_jar"
+    else
+      echo "Warning: Fernflower result jar $result_jar could not be extracted; checking for direct folder output." >&2
+    fi
+  fi
+
+  local sources_dir="$out_dir/sources"
+  mkdir -p "$sources_dir"
+  count=$(find "$sources_dir" -name "*.java" | wc -l)
+
+  # Vineflower may write sources directly into the destination folder tree instead of a result jar.
+  if [[ $count -eq 0 ]]; then
+    local direct_count=0
+    direct_count=$(find "$out_dir" \
+      -path "$sources_dir" -prune -o \
+      -path "$intermediate_dir" -prune -o \
+      -name "*.java" -type f -print | wc -l)
+    if [[ $direct_count -gt 0 ]]; then
+      while IFS= read -r -d '' entry; do
+        mv "$entry" "$sources_dir"/
+      done < <(find "$out_dir" -mindepth 1 -maxdepth 1 \
+        ! -name "sources" \
+        ! -name "intermediate" \
+        -print0)
+      count=$(find "$sources_dir" -name "*.java" | wc -l)
+    fi
   fi
 
   # Clean up intermediate dex2jar output
-  if [[ -n "${converted_jar:-}" ]] && [[ -f "${converted_jar:-}" ]]; then
-    rm -f "$converted_jar"
+  if [[ $count -gt 0 ]]; then
+    echo "Fernflower output: $sources_dir/"
+    echo "Java files decompiled by Fernflower: $count"
+    if [[ -n "${converted_jar:-}" ]] && [[ -f "${converted_jar:-}" ]]; then
+      rm -f "$converted_jar"
+    fi
+    if [[ -d "$intermediate_dir" ]]; then
+      rmdir "$intermediate_dir" 2>/dev/null || true
+    fi
+    if [[ $ff_status -ne 0 ]]; then
+      echo "Warning: Fernflower/Vineflower exited with status $ff_status after writing $count Java files; treating this as partial success." >&2
+      return 2
+    fi
+    return 0
   fi
+
+  if [[ -n "${converted_jar:-}" ]] && [[ -f "${converted_jar:-}" ]]; then
+    echo "Error: Fernflower/Vineflower produced no Java output. Intermediate dex2jar artifact kept at $converted_jar" >&2
+  else
+    echo "Error: Fernflower/Vineflower produced no Java output." >&2
+  fi
+
+  if [[ $ff_status -ne 0 ]]; then
+    if [[ $ff_status -eq 124 ]]; then
+      echo "Error: Fernflower/Vineflower exceeded timeout (${ff_timeout_seconds}s)." >&2
+    fi
+    echo "Error: Fernflower/Vineflower exited with status $ff_status." >&2
+  fi
+  return 1
 }
 
 # --- Summary helper ---
@@ -259,9 +348,28 @@ print_structure() {
   local src_dir="$1"
   local label="$2"
   if [[ -d "$src_dir" ]]; then
+    local packages=()
     echo
     echo "Top-level packages ($label):"
-    find "$src_dir" -mindepth 1 -maxdepth 3 -type d | head -20 | sed "s|$src_dir/||" | grep -v '^$' | sort
+    while IFS= read -r pkg; do
+      [[ -n "$pkg" ]] && packages+=("$pkg")
+    done < <(find "$src_dir" -mindepth 1 -maxdepth 3 -type d -printf '%P\n' | sort)
+
+    local limit=${#packages[@]}
+    if (( limit > 20 )); then
+      limit=20
+    fi
+
+    if (( limit == 0 )); then
+      echo "(none)"
+      return
+    fi
+
+    local i=0
+    while (( i < limit )); do
+      echo "${packages[$i]}"
+      ((i += 1))
+    done
   fi
 }
 
@@ -284,19 +392,63 @@ decompile_single() {
 
   case "$ENGINE" in
     jadx)
-      run_jadx "$out_dir"
+      local jadx_status=0
+      if run_jadx "$out_dir"; then
+        jadx_status=0
+      else
+        jadx_status=$?
+      fi
       print_structure "$out_dir/sources" "jadx"
+      if [[ $jadx_status -eq 1 ]]; then
+        return 1
+      fi
+      if [[ $jadx_status -eq 2 ]]; then
+        echo "jadx completed with warnings but produced usable output."
+      fi
       ;;
     fernflower)
-      run_fernflower "$out_dir"
+      local ff_status=0
+      if run_fernflower "$out_dir"; then
+        ff_status=0
+      else
+        ff_status=$?
+      fi
       print_structure "$out_dir/sources" "fernflower"
+      if [[ $ff_status -eq 1 ]]; then
+        return 1
+      fi
+      if [[ $ff_status -eq 2 ]]; then
+        echo "Fernflower completed with warnings but produced usable output."
+      fi
       ;;
     both)
+      local jadx_status=0
+      local ff_status=0
       echo "--- Pass 1: jadx ---"
-      run_jadx "$out_dir/jadx"
+      if run_jadx "$out_dir/jadx"; then
+        jadx_status=0
+      else
+        jadx_status=$?
+      fi
+      if [[ $jadx_status -eq 1 ]]; then
+        return 1
+      fi
+      if [[ $jadx_status -eq 2 ]]; then
+        echo "Continuing to Fernflower because jadx produced usable output despite warnings."
+      fi
       echo
       echo "--- Pass 2: Fernflower ---"
-      run_fernflower "$out_dir/fernflower"
+      if run_fernflower "$out_dir/fernflower"; then
+        ff_status=0
+      else
+        ff_status=$?
+      fi
+      if [[ $ff_status -eq 1 ]]; then
+        return 1
+      fi
+      if [[ $ff_status -eq 2 ]]; then
+        echo "Continuing with Fernflower output because it produced usable sources despite warnings."
+      fi
 
       print_structure "$out_dir/jadx/sources" "jadx"
       print_structure "$out_dir/fernflower/sources" "fernflower"
@@ -314,8 +466,14 @@ decompile_single() {
       echo "Fernflower:  $ff_count Java files"
 
       if [[ -d "$out_dir/jadx/sources" ]]; then
+        local jadx_error_files
         local jadx_errors
-        jadx_errors=$(grep -rl 'JADX WARNING\|JADX WARN\|JADX ERROR\|Code decompiled incorrectly' "$out_dir/jadx/sources" 2>/dev/null | wc -l || echo 0)
+        jadx_error_files=$(grep -rl 'JADX WARNING\|JADX WARN\|JADX ERROR\|Code decompiled incorrectly' "$out_dir/jadx/sources" 2>/dev/null || true)
+        if [[ -n "$jadx_error_files" ]]; then
+          jadx_errors=$(printf '%s\n' "$jadx_error_files" | wc -l)
+        else
+          jadx_errors=0
+        fi
         echo "jadx files with warnings/errors: $jadx_errors"
       fi
       echo
