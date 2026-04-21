@@ -1,0 +1,59 @@
+---
+description: "Decompile Windows EXE/DLL/.NET assemblies. Use Ghidra for native PE binaries and ILSpy for .NET. Extract Win32 API calls, network endpoints, registry operations. Trace call flows from entry points to API calls."
+globs: ["**/*.exe", "**/*.dll", "**/*.sys"]
+alwaysApply: false
+---
+
+# Windows Reverse Engineering
+
+Decompile Windows binaries using Ghidra (native PE → C pseudocode) or ILSpy (.NET → C# source). Auto-detects binary type.
+
+## Quick Start
+
+```powershell
+# 1. Check dependencies
+powershell -ExecutionPolicy Bypass -File plugins/windows-reverse-engineering/skills/windows-reverse-engineering/scripts/check-deps.ps1
+
+# 2. Install missing deps
+powershell -ExecutionPolicy Bypass -File plugins/windows-reverse-engineering/skills/windows-reverse-engineering/scripts/install-dep.ps1 <dep>
+
+# 3. Decompile (auto-detects engine)
+powershell -ExecutionPolicy Bypass -File plugins/windows-reverse-engineering/skills/windows-reverse-engineering/scripts/decompile.ps1 target.exe
+
+# 4. Find API calls
+powershell -ExecutionPolicy Bypass -File plugins/windows-reverse-engineering/skills/windows-reverse-engineering/scripts/find-api-calls.ps1 output/sources/
+```
+
+## Workflow
+
+1. **Verify deps** → run `check-deps.ps1`, install any missing with `install-dep.ps1`
+2. **Decompile** → run `decompile.ps1` with `-Engine auto|ghidra|ilspy`
+3. **Analyze structure** → review imports, exports, PE headers, namespace layout
+4. **Trace call flows** → follow entry points (WinMain/Main) → handlers → API calls
+5. **Extract APIs** → run `find-api-calls.ps1` with `-Network`, `-Registry`, `-Crypto`, `-Urls`, `-Process`, `-Auth`, `-Persistence`
+
+## Auto-Detection
+
+| Binary Type | Engine |
+|---|---|
+| .NET assembly (CLI header present) | ILSpy → C# source |
+| Native C/C++ PE | Ghidra → C pseudocode |
+| Kernel driver (.sys) | Ghidra |
+
+## API Documentation Format
+
+```markdown
+### `FunctionName` (DLL: source.dll)
+- **Source**: filename.c:42
+- **Category**: Network / Registry / File I/O / Process / Crypto
+- **Called from**: Main → InitNetwork → WinHttpSendRequest
+- **Purpose**: Description
+```
+
+## References
+
+- `plugins/windows-reverse-engineering/skills/windows-reverse-engineering/references/setup-guide.md`
+- `plugins/windows-reverse-engineering/skills/windows-reverse-engineering/references/ghidra-headless-usage.md`
+- `plugins/windows-reverse-engineering/skills/windows-reverse-engineering/references/ilspy-usage.md`
+- `plugins/windows-reverse-engineering/skills/windows-reverse-engineering/references/api-extraction-patterns.md`
+- `plugins/windows-reverse-engineering/skills/windows-reverse-engineering/references/call-flow-analysis.md`

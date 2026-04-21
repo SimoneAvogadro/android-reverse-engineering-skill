@@ -22,6 +22,19 @@
       "license": "Apache-2.0",
       "keywords": ["android", "reverse-engineering", "apk", "jadx", "decompile", "api-extraction"],
       "category": "security"
+    },
+    {
+      "name": "windows-reverse-engineering",
+      "source": "./plugins/windows-reverse-engineering",
+      "description": "Decompile Windows EXE/DLL/.NET assemblies with Ghidra and ILSpy, trace call flows, and document extracted Win32/network APIs.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Simone Avogadro"
+      },
+      "repository": "https://github.com/SimoneAvogadro/android-reverse-engineering-skill",
+      "license": "Apache-2.0",
+      "keywords": ["windows", "reverse-engineering", "exe", "dll", "ghidra", "ilspy", "decompile", "pe-analysis", "api-extraction"],
+      "category": "security"
     }
   ]
 }

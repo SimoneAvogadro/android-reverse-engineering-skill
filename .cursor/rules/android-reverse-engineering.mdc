@@ -1,0 +1,61 @@
+---
+description: "Decompile Android APK/XAPK/JAR/AAR files. Use jadx or Fernflower/Vineflower. Extract Retrofit/OkHttp API endpoints, trace call flows from Activities through ViewModels to network layer."
+globs: ["**/*.apk", "**/*.xapk", "**/*.jar", "**/*.aar"]
+alwaysApply: false
+---
+
+# Android Reverse Engineering
+
+Decompile Android packages using jadx (broad coverage) or Fernflower/Vineflower (higher quality Java). Extract HTTP APIs — Retrofit endpoints, OkHttp calls, hardcoded URLs.
+
+## Quick Start
+
+```bash
+# 1. Check dependencies
+bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/check-deps.sh
+
+# 2. Install missing deps
+bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/install-dep.sh <dep>
+
+# 3. Decompile
+bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/decompile.sh app.apk
+
+# 4. Find API calls
+bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/find-api-calls.sh output/sources/
+```
+
+## Workflow
+
+1. **Verify deps** → run `check-deps.sh`, install any missing with `install-dep.sh`
+2. **Decompile** → run `decompile.sh` with `--engine jadx|fernflower|both`
+3. **Analyze structure** → AndroidManifest.xml, package layout, architecture patterns
+4. **Trace call flows** → Activity → ViewModel → Repository → Retrofit/OkHttp → HTTP
+5. **Extract APIs** → run `find-api-calls.sh` with `--retrofit`, `--okhttp`, `--urls`, `--auth`
+
+## Engine Selection
+
+| Situation | Engine |
+|---|---|
+| General APK analysis | jadx (default) |
+| Complex Java decompilation | Fernflower/Vineflower |
+| Side-by-side comparison | `--engine both` |
+| Obfuscated APK | jadx with `--deobf` |
+
+## API Documentation Format
+
+```markdown
+### `METHOD /api/endpoint`
+- **Source**: ClassName.java:42
+- **Retrofit**: @POST("/api/endpoint")
+- **Headers**: Authorization: Bearer {token}
+- **Body**: { "key": "value" }
+- **Called from**: Activity → ViewModel → Repository → ApiService
+```
+
+## References
+
+- `plugins/android-reverse-engineering/skills/android-reverse-engineering/references/setup-guide.md`
+- `plugins/android-reverse-engineering/skills/android-reverse-engineering/references/jadx-usage.md`
+- `plugins/android-reverse-engineering/skills/android-reverse-engineering/references/fernflower-usage.md`
+- `plugins/android-reverse-engineering/skills/android-reverse-engineering/references/api-extraction-patterns.md`
+- `plugins/android-reverse-engineering/skills/android-reverse-engineering/references/call-flow-analysis.md`

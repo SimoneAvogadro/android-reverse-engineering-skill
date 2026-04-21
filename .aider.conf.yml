@@ -1,0 +1,5 @@
+# Aider configuration for reverse engineering skills
+# AGENTS.md is auto-loaded as context for every session
+
+read:
+  - AGENTS.md
