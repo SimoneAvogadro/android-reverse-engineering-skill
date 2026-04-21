@@ -87,30 +87,86 @@ if ($List) {
     exit 0
 }
 
-# --- Check deps ---
-if ($CheckDeps) {
+# --- Check deps function ---
+function Invoke-DependencyCheck {
     Write-Host '=== Running Dependency Checks ===' -ForegroundColor Cyan
     Write-Host ''
+    
+    $missingDeps = @()
+
     Write-Host '--- Windows Dependencies ---' -ForegroundColor Yellow
-    $winScript = Join-Path $ScriptDir 'plugins\windows-reverse-engineering\skills\windows-reverse-engineering\scripts\check-deps.ps1'
-    if (Test-Path $winScript) {
-        & powershell -ExecutionPolicy Bypass -File $winScript
+    $winCheck = Join-Path $ScriptDir 'plugins\windows-reverse-engineering\skills\windows-reverse-engineering\scripts\check-deps.ps1'
+    $winInstall = Join-Path $ScriptDir 'plugins\windows-reverse-engineering\skills\windows-reverse-engineering\scripts\install-dep.ps1'
+    if (Test-Path $winCheck) {
+        $winOut = & powershell -ExecutionPolicy Bypass -File $winCheck
+        foreach ($line in $winOut) {
+            $lineStr = [string]$line
+            if ($lineStr -match '^INSTALL_') {
+                $depInfo = @{
+                    OS = 'Windows'
+                    Name = ($lineStr -split ':')[1]
+                    InstallScript = $winInstall
+                }
+                $missingDeps += $depInfo
+            } else {
+                Write-Host $lineStr
+            }
+        }
     } else {
-        Write-Host ('Windows check-deps.ps1 not found at: ' + $winScript) -ForegroundColor Red
+        Write-Host ('Windows check-deps.ps1 not found at: ' + $winCheck) -ForegroundColor Red
     }
+
     Write-Host ''
     Write-Host '--- Android Dependencies ---' -ForegroundColor Yellow
-    $androidScript = Join-Path $ScriptDir 'plugins\android-reverse-engineering\skills\android-reverse-engineering\scripts\check-deps.sh'
-    if (Test-Path $androidScript) {
+    $androidCheck = Join-Path $ScriptDir 'plugins\android-reverse-engineering\skills\android-reverse-engineering\scripts\check-deps.sh'
+    $androidInstall = Join-Path $ScriptDir 'plugins\android-reverse-engineering\skills\android-reverse-engineering\scripts\install-dep.sh'
+    if (Test-Path $androidCheck) {
         $bashCmd = Get-Command bash -ErrorAction SilentlyContinue
         if ($bashCmd) {
-            & bash $androidScript
+            $andOut = & bash $androidCheck
+            foreach ($line in $andOut) {
+                $lineStr = [string]$line
+                if ($lineStr -match '^INSTALL_') {
+                    $depInfo = @{
+                        OS = 'Android'
+                        Name = ($lineStr -split ':')[1]
+                        InstallScript = $androidInstall
+                    }
+                    $missingDeps += $depInfo
+                } else {
+                    Write-Host $lineStr
+                }
+            }
         } else {
             Write-Host 'bash not found. Android dependency check requires WSL or Git Bash.' -ForegroundColor Yellow
         }
     } else {
-        Write-Host ('Android check-deps.sh not found at: ' + $androidScript) -ForegroundColor Red
+        Write-Host ('Android check-deps.sh not found at: ' + $androidCheck) -ForegroundColor Red
     }
+
+    if ($missingDeps.Count -gt 0) {
+        Write-Host ''
+        $totalMissing = $missingDeps.Count
+        $ans = Read-Host ('Detected {0} missing dependencies (optional/required). Would you like to install them now? (y/N)' -f $totalMissing)
+        if ($ans -match '^y') {
+            Write-Host ''
+            foreach ($depInfo in $missingDeps) {
+                Write-Host ('--- Installing ' + $depInfo.OS + ' dependency: ' + $depInfo.Name + ' ---') -ForegroundColor Cyan
+                if ($depInfo.OS -eq 'Windows') {
+                    & powershell -ExecutionPolicy Bypass -File $depInfo.InstallScript $depInfo.Name
+                } else {
+                    & bash $depInfo.InstallScript $depInfo.Name
+                }
+            }
+            Write-Host ''
+            Write-Host 'Done installing dependencies.' -ForegroundColor Green
+            Write-Host 'Restart your terminal if any PATH variables were updated.' -ForegroundColor Yellow
+        }
+    }
+}
+
+if ($CheckDeps) {
+    Invoke-DependencyCheck
     exit 0
 }
 

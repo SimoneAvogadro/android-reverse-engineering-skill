@@ -81,27 +81,82 @@ if $LIST; then
     exit 0
 fi
 
-# --- Check deps ---
-if $CHECK_DEPS; then
+# --- Check deps function ---
+invoke_dependency_check() {
     echo "=== Running Dependency Checks ==="
     echo ""
+    
+    local missing_win=()
+    local missing_android=()
+
     echo "--- Windows Dependencies ---"
-    WIN_SCRIPT="$SCRIPT_DIR/plugins/windows-reverse-engineering/skills/windows-reverse-engineering/scripts/check-deps.ps1"
-    if command -v powershell &>/dev/null && [ -f "$WIN_SCRIPT" ]; then
-        powershell -ExecutionPolicy Bypass -File "$WIN_SCRIPT" || true
-    elif command -v pwsh &>/dev/null && [ -f "$WIN_SCRIPT" ]; then
-        pwsh -ExecutionPolicy Bypass -File "$WIN_SCRIPT" || true
+    local win_check="$SCRIPT_DIR/plugins/windows-reverse-engineering/skills/windows-reverse-engineering/scripts/check-deps.ps1"
+    local win_install="$SCRIPT_DIR/plugins/windows-reverse-engineering/skills/windows-reverse-engineering/scripts/install-dep.ps1"
+    if command -v powershell &>/dev/null && [ -f "$win_check" ]; then
+        while IFS= read -r line; do
+            if [[ "$line" =~ ^INSTALL_(REQUIRED|OPTIONAL):(.+)$ ]]; then
+                missing_win+=("${BASH_REMATCH[2]}")
+            else
+                echo "$line"
+            fi
+        done < <(powershell -ExecutionPolicy Bypass -File "$win_check" 2>&1 || true)
+    elif command -v pwsh &>/dev/null && [ -f "$win_check" ]; then
+        while IFS= read -r line; do
+            if [[ "$line" =~ ^INSTALL_(REQUIRED|OPTIONAL):(.+)$ ]]; then
+                missing_win+=("${BASH_REMATCH[2]}")
+            else
+                echo "$line"
+            fi
+        done < <(pwsh -ExecutionPolicy Bypass -File "$win_check" 2>&1 || true)
     else
         echo "PowerShell not available. Skipping Windows dependency check."
     fi
+
     echo ""
     echo "--- Android Dependencies ---"
-    ANDROID_SCRIPT="$SCRIPT_DIR/plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/check-deps.sh"
-    if [ -f "$ANDROID_SCRIPT" ]; then
-        bash "$ANDROID_SCRIPT" || true
+    local android_check="$SCRIPT_DIR/plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/check-deps.sh"
+    local android_install="$SCRIPT_DIR/plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/install-dep.sh"
+    if [ -f "$android_check" ]; then
+        while IFS= read -r line; do
+            # Filter out powershell warnings matching CRLF if needed, bash doesn't have it generally but check-deps might
+            line="${line%$'\r'}"
+            if [[ "$line" =~ ^INSTALL_(REQUIRED|OPTIONAL):(.+)$ ]]; then
+                missing_android+=("${BASH_REMATCH[2]}")
+            else
+                echo "$line"
+            fi
+        done < <(bash "$android_check" 2>&1 || true)
     else
         echo "Android check-deps.sh not found."
     fi
+
+    local total_missing=$((${#missing_win[@]} + ${#missing_android[@]}))
+    if [ "$total_missing" -gt 0 ]; then
+        echo ""
+        read -rp "Detected $total_missing missing dependencies (optional/required). Would you like to install them now? (y/N) " ans
+        if [[ "$ans" =~ ^[Yy] ]]; then
+            echo ""
+            for dep in "${missing_win[@]}"; do
+                echo "--- Installing Windows dependency: $dep ---"
+                if command -v powershell &>/dev/null; then
+                    powershell -ExecutionPolicy Bypass -File "$win_install" "$dep"
+                else
+                    pwsh -ExecutionPolicy Bypass -File "$win_install" "$dep"
+                fi
+            done
+            for dep in "${missing_android[@]}"; do
+                echo "--- Installing Android dependency: $dep ---"
+                bash "$android_install" "$dep"
+            done
+            echo ""
+            echo "Done installing dependencies."
+            echo "Restart your terminal if any PATH variables were updated."
+        fi
+    fi
+}
+
+if $CHECK_DEPS; then
+    invoke_dependency_check
     exit 0
 fi
 
