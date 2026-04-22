@@ -133,7 +133,7 @@ Converts Android DEX bytecode to standard Java JAR files.
 
 ### GitHub Releases
 
-1. Go to <https://github.com/pxb1988/dex2jar/releases/latest>
+1. Go to <https://github.com/ThexXTURBOXx/dex2jar/releases/latest>
 2. Download and extract:
 
 ```bash

@@ -18,7 +18,7 @@ A Claude Code skill that decompiles Android APK/XAPK/JAR/AAR files and **extract
 
 **Optional (recommended):**
 - [Vineflower](https://github.com/Vineflower/vineflower) or [Fernflower](https://github.com/JetBrains/fernflower) — better output on complex Java code
-- [dex2jar](https://github.com/pxb1988/dex2jar) — needed to use Fernflower on APK/DEX files
+- [dex2jar](https://github.com/ThexXTURBOXx/dex2jar) — needed to use Fernflower on APK/DEX files
 
 See `plugins/android-reverse-engineering/skills/android-reverse-engineering/references/setup-guide.md` for detailed installation instructions.
 
@@ -133,7 +133,7 @@ android-reverse-engineering-skill/
 - [jadx — Dex to Java decompiler](https://github.com/skylot/jadx)
 - [Fernflower — JetBrains analytical decompiler](https://github.com/JetBrains/fernflower)
 - [Vineflower — Fernflower community fork](https://github.com/Vineflower/vineflower)
-- [dex2jar — DEX to JAR converter](https://github.com/pxb1988/dex2jar)
+- [dex2jar — DEX to JAR converter](https://github.com/ThexXTURBOXx/dex2jar)
 - [apktool — Android resource decoder](https://apktool.org/)
 
 ## Disclaimer

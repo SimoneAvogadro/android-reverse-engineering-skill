@@ -332,24 +332,24 @@ install_dex2jar() {
   # Download from GitHub (no sudo needed)
   info "Installing dex2jar from GitHub releases..."
   local tag
-  tag=$(gh_latest_tag "pxb1988/dex2jar")
+  tag=$(gh_latest_tag "ThexXTURBOXx/dex2jar")
   if [[ -z "$tag" ]]; then
-    # Fallback: pxb1988 hasn't released in a while, try known version
-    tag="v2.4"
+    # Fallback to a known maintained release if GitHub metadata is unavailable.
+    tag="2.4.35"
   fi
 
   local version="${tag#v}"
-  local url="https://github.com/pxb1988/dex2jar/releases/download/${tag}/dex-tools-${version}.zip"
+  local url="https://github.com/ThexXTURBOXx/dex2jar/releases/download/${tag}/dex-tools-${version}.zip"
   local tmp_zip
   tmp_zip=$(mktemp /tmp/dex2jar-XXXXXX.zip)
 
   info "Downloading dex2jar $version..."
   if ! download "$url" "$tmp_zip"; then
     # Try alternate naming
-    url="https://github.com/pxb1988/dex2jar/releases/download/${tag}/dex-tools-v${version}.zip"
+    url="https://github.com/ThexXTURBOXx/dex2jar/releases/download/${tag}/dex-tools-v${version}.zip"
     download "$url" "$tmp_zip" || {
       fail "Download failed."
-      manual "Download from https://github.com/pxb1988/dex2jar/releases/latest"
+      manual "Download from https://github.com/ThexXTURBOXx/dex2jar/releases/latest"
     }
   fi
 
@@ -369,7 +369,7 @@ install_dex2jar() {
 
   if [[ -z "$bin_dir" ]]; then
     fail "Could not find d2j-dex2jar.sh in extracted archive."
-    manual "Download and extract manually from https://github.com/pxb1988/dex2jar/releases"
+    manual "Download and extract manually from https://github.com/ThexXTURBOXx/dex2jar/releases"
   fi
 
   chmod +x "$bin_dir"/*.sh 2>/dev/null || true
