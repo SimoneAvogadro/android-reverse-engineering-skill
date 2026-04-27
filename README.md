@@ -1,27 +1,47 @@
 # Android Reverse Engineering & API Extraction — Claude Code skill
 
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0) [![GitHub stars](https://img.shields.io/github/stars/SimoneAvogadro/android-reverse-engineering-skill?style=social)](https://github.com/SimoneAvogadro/android-reverse-engineering-skill/stargazers) [![GitHub last commit](https://img.shields.io/github/last-commit/SimoneAvogadro/android-reverse-engineering-skill)](https://github.com/SimoneAvogadro/android-reverse-engineering-skill/commits/master)
+
 A Claude Code skill that decompiles Android APK/XAPK/JAR/AAR files, **extracts HTTP APIs**, **audits privacy** by detecting tracker/analytics and advertising SDKs, and **neutralizes SDK telemetry** at the smali bytecode level for enterprise deployment — so you can document endpoints, understand data collection, assess ad monetization, and produce sanitized APKs without the original source code.
+
+> **Windows / PowerShell support (experimental)**: The `*.ps1` scripts alongside the bash ones are a recent community contribution, still being stabilised. For any issues please open an issue on **this** repository (not on the contributors' upstream forks): the PowerShell scripts are maintained here by [@SimoneAvogadro](https://github.com/SimoneAvogadro).
+
+## Table of Contents
+
+- [What it does](#what-it-does)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Repository Structure](#repository-structure)
+- [References](#references)
+- [Acknowledgments](#acknowledgments)
+- [Disclaimer](#disclaimer)
+- [License](#license)
 
 ## What it does
 
-- **Decompiles** APK, XAPK, JAR, and AAR files using jadx and Fernflower/Vineflower (single engine or side-by-side comparison)
-- **Extracts and documents APIs**: Retrofit endpoints, OkHttp calls, hardcoded URLs, auth headers and tokens
-- **Traces call flows** from Activities/Fragments through ViewModels and repositories down to HTTP calls
-- **Detects tracker/analytics SDKs**: Firebase Analytics, Adjust, AppsFlyer, Mixpanel, Amplitude, Segment, Braze, CleverTap, Flurry — with deep analysis of init, events, user identification, consent, and data exfiltration endpoints
-- **Detects advertising SDKs**: AdMob, Unity Ads, IronSource/LevelPlay, AppLovin/MAX, Meta Audience Network, Vungle, InMobi, Chartboost, Pangle, Mintegral — with ad format mapping, mediation analysis, and consent framework detection
-- **Neutralizes SDK entry points**: replaces tracker/ad SDK method bodies with no-op stubs at the smali level, disables manifest components, and rebuilds a signed APK for enterprise sideloading
-- **Analyzes** app structure: manifest, packages, architecture patterns
-- **Handles obfuscated code**: strategies for navigating ProGuard/R8 output
+| Capability | Description |
+|------------|-------------|
+| **Decompile** | APK, XAPK, JAR, and AAR files using jadx and Fernflower/Vineflower (single engine or side-by-side comparison) |
+| **Extract APIs** | Retrofit endpoints, OkHttp calls, hardcoded URLs, auth headers and tokens |
+| **Trace call flows** | From Activities/Fragments through ViewModels and repositories down to HTTP calls |
+| **Detect tracker/analytics SDKs** | Firebase Analytics, Adjust, AppsFlyer, Mixpanel, Amplitude, Segment, Braze, CleverTap, Flurry — with deep analysis of init, events, user identification, consent, and data exfiltration endpoints |
+| **Detect advertising SDKs** | AdMob, Unity Ads, IronSource/LevelPlay, AppLovin/MAX, Meta Audience Network, Vungle, InMobi, Chartboost, Pangle, Mintegral — with ad format mapping, mediation analysis, and consent framework detection |
+| **Neutralize SDK entry points** | Replace tracker/ad SDK method bodies with no-op stubs at the smali level, disable manifest components, and rebuild a signed APK for enterprise sideloading |
+| **Analyze structure** | Manifest, packages, architecture patterns |
+| **Handle obfuscation** | Strategies for navigating ProGuard/R8 output |
 
 ## Requirements
 
 **Required:**
+
 - Java JDK 17+
 - [jadx](https://github.com/skylot/jadx) (CLI)
 
 **Optional (recommended):**
+
 - [Vineflower](https://github.com/Vineflower/vineflower) or [Fernflower](https://github.com/JetBrains/fernflower) — better output on complex Java code
-- [dex2jar](https://github.com/pxb1988/dex2jar) — needed to use Fernflower on APK/DEX files
+- [dex2jar](https://github.com/ThexXTURBOXx/dex2jar) — needed to use Fernflower on APK/DEX files
 
 **For SDK neutralization (`/neutralize`):**
 - [apktool](https://apktool.org/) (required) — APK decode/rebuild
@@ -36,7 +56,7 @@ See `plugins/android-reverse-engineering/skills/android-reverse-engineering/refe
 
 Inside Claude Code, run:
 
-```
+```text
 /plugin marketplace add SimoneAvogadro/android-reverse-engineering-skill
 /plugin install android-reverse-engineering@android-reverse-engineering-skill
 ```
@@ -74,7 +94,7 @@ git clone https://github.com/SimoneAvogadro/android-reverse-engineering-skill.gi
 
 Then in Claude Code:
 
-```
+```text
 /plugin marketplace add /path/to/android-reverse-engineering-skill
 /plugin install android-reverse-engineering@android-reverse-engineering-skill
 ```
@@ -83,7 +103,7 @@ Then in Claude Code:
 
 ### Slash commands
 
-```
+```text
 /decompile path/to/app.apk
 ```
 Runs the full workflow: dependency check, decompilation, and initial structure analysis.
@@ -184,7 +204,7 @@ bash plugins/android-reverse-engineering/skills/sdk-neutralizer/scripts/neutrali
 
 ## Repository Structure
 
-```
+```text
 android-reverse-engineering-skill/
 ├── .claude-plugin/
 │   └── marketplace.json                    # Marketplace catalog
@@ -202,10 +222,14 @@ android-reverse-engineering-skill/
 │       │   │   │   ├── api-extraction-patterns.md
 │       │   │   │   └── call-flow-analysis.md
 │       │   │   └── scripts/
-│       │   │       ├── check-deps.sh
+│       │   │       ├── check-deps.sh       # Bash
+│       │   │       ├── check-deps.ps1      # PowerShell
 │       │   │       ├── install-dep.sh
+│       │   │       ├── install-dep.ps1
 │       │   │       ├── decompile.sh
-│       │   │       └── find-api-calls.sh
+│       │   │       ├── decompile.ps1
+│       │   │       ├── find-api-calls.sh
+│       │   │       └── find-api-calls.ps1
 │       │   ├── tracker-analysis/            # Tracker/analytics SDK detection
 │       │   │   ├── SKILL.md                # 4-phase workflow
 │       │   │   ├── references/
@@ -230,8 +254,10 @@ android-reverse-engineering-skill/
 │       │       └── scripts/
 │       │           ├── check-neutralize-deps.sh
 │       │           ├── decode-apk.sh
+│       │           ├── merge-splits.sh
 │       │           ├── neutralize.sh
-│       │           └── rebuild-apk.sh
+│       │           ├── rebuild-apk.sh
+│       │           └── registry-scan.py
 │       └── commands/
 │           ├── decompile.md                # /decompile slash command
 │           ├── find-trackers.md            # /find-trackers slash command
@@ -246,8 +272,17 @@ android-reverse-engineering-skill/
 - [jadx — Dex to Java decompiler](https://github.com/skylot/jadx)
 - [Fernflower — JetBrains analytical decompiler](https://github.com/JetBrains/fernflower)
 - [Vineflower — Fernflower community fork](https://github.com/Vineflower/vineflower)
-- [dex2jar — DEX to JAR converter](https://github.com/pxb1988/dex2jar)
+- [dex2jar — DEX to JAR converter](https://github.com/ThexXTURBOXx/dex2jar)
 - [apktool — Android resource decoder](https://apktool.org/)
+
+## Acknowledgments
+
+Thanks to the contributors who have shaped this skill:
+
+- [@philjn](https://github.com/philjn) — Native Windows / PowerShell support (`check-deps.ps1`, `install-dep.ps1`, `decompile.ps1`, `find-api-calls.ps1`) and split/bundled APK detection in `decompile.sh` (#8)
+- [@txhno](https://github.com/txhno) — Migration to the maintained [`ThexXTURBOXx/dex2jar`](https://github.com/ThexXTURBOXx/dex2jar) fork (#12)
+- [@muqiao215](https://github.com/muqiao215) — Decompile partial-success handling, Fernflower timeout safeguard, intermediate-artifact directory (#10)
+- [@kevinaimonster](https://github.com/kevinaimonster) — Chinese localization (`SKILL.md` discovery keywords) (#4)
 
 ## Disclaimer
 

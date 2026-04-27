@@ -46,16 +46,19 @@ After any installations, re-run `check-deps.sh` to verify. Do not proceed until 
 Run the decompile script on the target file. Choose the engine based on the input:
 
 - **APK or XAPK** → use jadx first (handles resources natively; XAPK is auto-extracted):
+
   ```bash
   bash ${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/decompile.sh <file>
   ```
 
 - **JAR/AAR** and Fernflower is available → prefer fernflower for better Java output:
+
   ```bash
   bash ${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/decompile.sh --engine fernflower <file>
   ```
 
 - **If jadx output has warnings** or the user wants the best quality → run both and compare:
+
   ```bash
   bash ${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/decompile.sh --engine both <file>
   ```
@@ -79,6 +82,7 @@ After decompilation completes:
 ### Step 5: Offer next steps
 
 Tell the user what they can do next:
+
 - **Trace call flows**: "I can follow the execution flow from any Activity to its API calls"
 - **Extract APIs**: "I can search for all HTTP endpoints and document them"
 - **Analyze specific classes**: "Point me to a specific class or feature to analyze"
