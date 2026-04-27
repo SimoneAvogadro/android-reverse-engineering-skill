@@ -1,0 +1,71 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "unity-ads",
+  "display_name": "Unity Ads",
+  "description": "Unity Ads SDK for in-app advertising",
+  "vendor": "Unity",
+  "category": "ads",
+  "known_versions": ["4.15.0"],
+  "packages": [
+    "com.unity3d.ads",
+    "com.unity3d.services"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "readable"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "com.unity3d.ads.UnityAds",
+        "methods": [
+          { "name": "initialize", "signature": "*", "stub": "return-void", "note": "Main SDK init — all overloads" }
+        ]
+      }
+    ],
+    "ad_operations": [
+      {
+        "class": "com.unity3d.ads.UnityAds",
+        "methods": [
+          { "name": "load", "signature": "*", "stub": "return-void", "note": "Load ad placement — all overloads" },
+          { "name": "show", "signature": "*", "stub": "return-void", "note": "Show ad — all overloads" },
+          { "name": "isInitialized", "signature": "*", "stub": "return-false/0" },
+          { "name": "isReady", "signature": "*", "stub": "return-false/0" }
+        ]
+      }
+    ],
+    "deep_patterns": [
+      {
+        "package_glob": "com.unity3d.services.**",
+        "rule": "stub_all_void",
+        "note": "Unity Services internal — readable, stable across versions"
+      }
+    ]
+  },
+  "manifest_components": [
+    {
+      "type": "activity",
+      "class": "com.unity3d.ads.adunit.AdUnitActivity",
+      "action": "disable",
+      "note": "Legacy ad unit activity"
+    },
+    {
+      "type": "activity",
+      "class": "com.unity3d.ads.adunit.AdUnitTransparentActivity",
+      "action": "disable",
+      "note": "Legacy transparent ad overlay"
+    },
+    {
+      "type": "activity",
+      "class": "com.unity3d.services.ads.adunit.AdUnitActivity",
+      "action": "disable",
+      "note": "Services ad unit activity (newer SDK)"
+    }
+  ],
+  "protected_patterns": [
+    {
+      "pattern": "*.getActivity()*",
+      "reason": "Returns Activity reference — null causes NPE"
+    }
+  ]
+}

@@ -1,0 +1,84 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "ironsource",
+  "display_name": "IronSource / LevelPlay",
+  "description": "IronSource mediation SDK (also known as LevelPlay)",
+  "vendor": "Unity (IronSource)",
+  "category": "ads_mediation",
+  "known_versions": ["8.11.0"],
+  "packages": [
+    "com.ironsource.mediationsdk",
+    "com.ironsource.sdk",
+    "com.ironsource.adapters"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "obfuscated",
+    "internal_prefix": "single-letter"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "com.ironsource.mediationsdk.IronSource",
+        "methods": [
+          { "name": "init", "signature": "*", "stub": "return-void", "note": "Main SDK init — all overloads" }
+        ]
+      }
+    ],
+    "ad_operations": [
+      {
+        "class": "com.ironsource.mediationsdk.IronSource",
+        "methods": [
+          { "name": "loadInterstitial", "signature": "*", "stub": "return-void" },
+          { "name": "showInterstitial", "signature": "*", "stub": "return-void" },
+          { "name": "loadRewardedVideo", "signature": "*", "stub": "return-void" },
+          { "name": "showRewardedVideo", "signature": "*", "stub": "return-void" },
+          { "name": "loadBanner", "signature": "*", "stub": "return-void" },
+          { "name": "destroyBanner", "signature": "*", "stub": "return-void" },
+          { "name": "setConsent", "signature": "*", "stub": "return-void" },
+          { "name": "setMetaData", "signature": "*", "stub": "return-void" },
+          { "name": "isInterstitialReady", "signature": "*", "stub": "return-false/0", "note": "Always report no ad available" },
+          { "name": "isRewardedVideoAvailable", "signature": "*", "stub": "return-false/0", "note": "Always report no ad available" }
+        ]
+      }
+    ],
+    "deep_patterns": [
+      {
+        "package_glob": "com.ironsource.mediationsdk.sdk.**",
+        "rule": "stub_all_void",
+        "note": "Internal SDK classes — obfuscated, version-dependent"
+      },
+      {
+        "package_glob": "com.ironsource.adapters.**",
+        "rule": "stub_all_void",
+        "note": "Third-party ad network adapters bundled with IronSource"
+      }
+    ]
+  },
+  "manifest_components": [
+    {
+      "type": "activity",
+      "class": "com.ironsource.sdk.controller.InterstitialActivity",
+      "action": "disable",
+      "note": "Interstitial ad display activity"
+    },
+    {
+      "type": "activity",
+      "class": "com.ironsource.sdk.controller.ControllerActivity",
+      "action": "disable",
+      "note": "SDK controller activity"
+    },
+    {
+      "type": "provider",
+      "class": "com.ironsource.lifecycle.IronsourceLifecycleProvider",
+      "action": "disable",
+      "note": "Lifecycle auto-init provider"
+    }
+  ],
+  "protected_patterns": [
+    {
+      "pattern": "*.getActivity()*",
+      "reason": "Returns Activity reference — null causes NPE"
+    }
+  ]
+}

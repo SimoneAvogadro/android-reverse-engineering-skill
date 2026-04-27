@@ -1,0 +1,57 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "ogury",
+  "display_name": "Ogury",
+  "description": "Ogury ad and consent SDK",
+  "vendor": "Ogury",
+  "category": "ads",
+  "known_versions": [],
+  "packages": [
+    "com.ogury.sdk",
+    "com.ogury.ed",
+    "com.ogury.cm",
+    "com.ogury.core"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "obfuscated"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "com.ogury.sdk.Ogury",
+        "methods": [
+          { "name": "start", "signature": "*", "stub": "return-void", "note": "Main SDK init" }
+        ]
+      }
+    ],
+    "ad_operations": [
+      {
+        "class": "com.ogury.ed.OguryInterstitialAd",
+        "methods": [
+          { "name": "load", "signature": "*", "stub": "return-void" },
+          { "name": "show", "signature": "*", "stub": "return-void" },
+          { "name": "isLoaded", "signature": "*", "stub": "return-false/0" }
+        ]
+      },
+      {
+        "class": "com.ogury.ed.OguryOptinVideoAd",
+        "methods": [
+          { "name": "load", "signature": "*", "stub": "return-void" },
+          { "name": "show", "signature": "*", "stub": "return-void" },
+          { "name": "isLoaded", "signature": "*", "stub": "return-false/0" }
+        ]
+      },
+      {
+        "class": "com.ogury.ed.OguryBannerAdView",
+        "methods": [
+          { "name": "loadAd", "signature": "*", "stub": "return-void" },
+          { "name": "destroy", "signature": "*", "stub": "return-void" }
+        ]
+      }
+    ],
+    "deep_patterns": []
+  },
+  "manifest_components": [],
+  "protected_patterns": []
+}

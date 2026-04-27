@@ -115,6 +115,7 @@ if [[ "$ext_lower" == "xapk" ]]; then
   IS_XAPK=true
   echo "=== Extracting XAPK archive ==="
   XAPK_TMPDIR=$(mktemp -d "${TMPDIR:-/tmp}/xapk-decode-XXXXXX")
+  trap cleanup_xapk EXIT
   unzip -qo "$INPUT_FILE_ABS" -d "$XAPK_TMPDIR"
 
   # Show manifest.json if present

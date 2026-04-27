@@ -48,6 +48,25 @@ For each SDK found in the sweep, perform deep analysis:
 
 Use the reference documents in `${CLAUDE_PLUGIN_ROOT}/skills/tracker-analysis/references/` for SDK-specific patterns.
 
+### Step 3b: Filter false positives
+
+When analyzing the results, distinguish real SDK presence from false positives:
+
+- **HIGH confidence** — SDK-specific classes/imports are present (e.g., `FirebaseAnalytics.getInstance()`, `import com.adjust.sdk.Adjust`). The SDK is definitely integrated.
+- **MEDIUM confidence** — Only generic method names matched (e.g., `.track(`, `.logEvent(`, `.identify(`). These are common method names used by many libraries, not just tracker SDKs. Verify by checking if the actual SDK package exists in the source tree.
+- **LOW confidence** — Only string matches (e.g., the word "amplitude" in a comment or unrelated context). Check the surrounding code — if it's not an SDK import/call, it's a false positive.
+
+**Quick verification**: For any SDK flagged as detected, check if its package directory actually exists:
+```bash
+# Example: verify Firebase is really present, not just a string match
+find "$SOURCE_DIR" -path "*/com/google/firebase/analytics" -type d
+```
+
+Use `--summary` for a quick confidence-scored overview before diving into raw output:
+```bash
+bash ${CLAUDE_PLUGIN_ROOT}/skills/tracker-analysis/scripts/find-trackers.sh "$SOURCE_DIR" --summary
+```
+
 ### Step 4: Produce report
 
 Generate a structured report with:

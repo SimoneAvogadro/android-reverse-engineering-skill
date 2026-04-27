@@ -1,0 +1,59 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "smaato",
+  "display_name": "Smaato",
+  "description": "Smaato ad SDK",
+  "vendor": "Smaato",
+  "category": "ads",
+  "known_versions": [],
+  "packages": [
+    "com.smaato.sdk"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "obfuscated"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "com.smaato.sdk.core.SmaatoSdk",
+        "methods": [
+          { "name": "init", "signature": "*", "stub": "return-void", "note": "Main SDK init — all overloads" }
+        ]
+      }
+    ],
+    "ad_operations": [
+      {
+        "class": "com.smaato.sdk.interstitial.Interstitial",
+        "methods": [
+          { "name": "loadAd", "signature": "*", "stub": "return-void" },
+          { "name": "showAd", "signature": "*", "stub": "return-void" }
+        ]
+      },
+      {
+        "class": "com.smaato.sdk.rewarded.RewardedInterstitial",
+        "methods": [
+          { "name": "loadAd", "signature": "*", "stub": "return-void" },
+          { "name": "showAd", "signature": "*", "stub": "return-void" }
+        ]
+      },
+      {
+        "class": "com.smaato.sdk.banner.BannerView",
+        "methods": [
+          { "name": "loadAd", "signature": "*", "stub": "return-void" },
+          { "name": "destroy", "signature": "*", "stub": "return-void" }
+        ]
+      }
+    ],
+    "deep_patterns": []
+  },
+  "manifest_components": [
+    {
+      "type": "receiver",
+      "class": "com.smaato.sdk.core.SmaatoBroadcastReceiver",
+      "action": "disable",
+      "note": "Broadcast receiver for ad events"
+    }
+  ],
+  "protected_patterns": []
+}

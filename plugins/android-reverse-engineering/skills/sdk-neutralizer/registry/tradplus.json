@@ -1,0 +1,78 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "tradplus",
+  "display_name": "TradPlus",
+  "description": "TradPlus ad mediation SDK",
+  "vendor": "TradPlus",
+  "category": "ads_mediation",
+  "known_versions": [],
+  "packages": [
+    "com.tradplus.ads"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "obfuscated"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "com.tradplus.ads.open.TradPlusSdk",
+        "methods": [
+          { "name": "initSdk", "signature": "*", "stub": "return-void", "note": "Main SDK init" },
+          { "name": "setDebugMode", "signature": "*", "stub": "return-void" },
+          { "name": "setGDPRDataCollection", "signature": "*", "stub": "return-void" },
+          { "name": "setCCPADoNotSell", "signature": "*", "stub": "return-void" },
+          { "name": "setCOPPAIsAgeRestrictedUser", "signature": "*", "stub": "return-void" },
+          { "name": "setEUTraffic", "signature": "*", "stub": "return-void" },
+          { "name": "checkCurrentArea", "signature": "*", "stub": "return-void" }
+        ]
+      }
+    ],
+    "ad_operations": [],
+    "deep_patterns": [
+      {
+        "package_glob": "com.tradplus.ads.core.**",
+        "rule": "stub_all_void",
+        "note": "Core ad management internals"
+      },
+      {
+        "package_glob": "com.tradplus.ads.mgr.**",
+        "rule": "stub_all_void",
+        "note": "Ad manager internals"
+      }
+    ]
+  },
+  "manifest_components": [
+    {
+      "type": "activity",
+      "class": "com.tradplus.ads.mgr.interstitial.views.InterNativeActivity",
+      "action": "disable",
+      "note": "Fullscreen native interstitial activity"
+    },
+    {
+      "type": "activity",
+      "class": "com.tradplus.ads.mgr.interstitial.views.InterNativeAPI26Activity",
+      "action": "disable",
+      "note": "Native interstitial for API 26+"
+    },
+    {
+      "type": "activity",
+      "class": "com.tradplus.crosspro.ui.CPAdActivity",
+      "action": "disable",
+      "note": "Cross-promotion ad activity"
+    },
+    {
+      "type": "activity",
+      "class": "com.tradplus.crosspro.ui.ApkConfirmDialogActivity",
+      "action": "disable",
+      "note": "APK install confirm dialog"
+    },
+    {
+      "type": "activity",
+      "class": "com.tradplus.crosspro.ui.ApkConfirmDialogCNActivity",
+      "action": "disable",
+      "note": "APK install confirm dialog (CN)"
+    }
+  ],
+  "protected_patterns": []
+}

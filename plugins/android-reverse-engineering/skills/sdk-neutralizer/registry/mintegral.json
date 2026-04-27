@@ -1,0 +1,124 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "mintegral",
+  "display_name": "Mintegral",
+  "description": "Mintegral ad SDK",
+  "vendor": "Mintegral",
+  "category": "ads",
+  "known_versions": [],
+  "packages": [
+    "com.mbridge.msdk"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "obfuscated"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "com.mbridge.msdk.out.MBridgeSDKFactory",
+        "methods": [
+          { "name": "getMBridgeSDK", "signature": "*", "stub": "return-null", "note": "Factory — returns SDK singleton" }
+        ]
+      },
+      {
+        "class": "com.mbridge.msdk.MBridgeSDK",
+        "methods": [
+          { "name": "init", "signature": "*", "stub": "return-void", "note": "Main SDK init — all overloads" },
+          { "name": "initAsync", "signature": "*", "stub": "return-void", "note": "Async SDK init — all overloads" },
+          { "name": "preload", "signature": "*", "stub": "return-void" }
+        ]
+      }
+    ],
+    "ad_operations": [
+      {
+        "class": "com.mbridge.msdk.out.MBInterstitialHandler",
+        "methods": [
+          { "name": "preload", "signature": "*", "stub": "return-void" },
+          { "name": "show", "signature": "*", "stub": "return-void" }
+        ]
+      },
+      {
+        "class": "com.mbridge.msdk.out.MBRewardVideoHandler",
+        "methods": [
+          { "name": "load", "signature": "*", "stub": "return-void" },
+          { "name": "show", "signature": "*", "stub": "return-void" },
+          { "name": "isReady", "signature": "*", "stub": "return-false/0" }
+        ]
+      },
+      {
+        "class": "com.mbridge.msdk.out.MBBannerView",
+        "methods": [
+          { "name": "load", "signature": "*", "stub": "return-void" },
+          { "name": "loadFromBid", "signature": "*", "stub": "return-void" },
+          { "name": "release", "signature": "*", "stub": "return-void" }
+        ]
+      },
+      {
+        "class": "com.mbridge.msdk.out.MBNewInterstitialHandler",
+        "methods": [
+          { "name": "load", "signature": "*", "stub": "return-void" },
+          { "name": "loadFormSelfFilling", "signature": "*", "stub": "return-void" },
+          { "name": "show", "signature": "*", "stub": "return-void" },
+          { "name": "isReady", "signature": "*", "stub": "return-false/0" }
+        ]
+      },
+      {
+        "class": "com.mbridge.msdk.out.MBBidRewardVideoHandler",
+        "methods": [
+          { "name": "load", "signature": "*", "stub": "return-void" },
+          { "name": "show", "signature": "*", "stub": "return-void" },
+          { "name": "isReady", "signature": "*", "stub": "return-false/0" }
+        ]
+      },
+      {
+        "class": "com.mbridge.msdk.out.MBBidInterstitialVideoHandler",
+        "methods": [
+          { "name": "load", "signature": "*", "stub": "return-void" },
+          { "name": "show", "signature": "*", "stub": "return-void" },
+          { "name": "isReady", "signature": "*", "stub": "return-false/0" }
+        ]
+      }
+    ],
+    "deep_patterns": [
+      {
+        "package_glob": "com.mbridge.msdk.foundation.**",
+        "rule": "stub_all_void",
+        "note": "Internal foundation classes"
+      }
+    ]
+  },
+  "manifest_components": [
+    {
+      "type": "activity",
+      "class": "com.mbridge.msdk.activity.MBCommonActivity",
+      "action": "disable",
+      "note": "Common ad display activity"
+    },
+    {
+      "type": "activity",
+      "class": "com.mbridge.msdk.reward.player.MBRewardVideoActivity",
+      "action": "disable",
+      "note": "Legacy reward video activity"
+    },
+    {
+      "type": "activity",
+      "class": "com.mbridge.msdk.newreward.player.MBRewardVideoActivity",
+      "action": "disable",
+      "note": "New reward video activity"
+    },
+    {
+      "type": "activity",
+      "class": "com.mbridge.msdk.out.LoadingActivity",
+      "action": "disable",
+      "note": "Ad loading activity"
+    },
+    {
+      "type": "receiver",
+      "class": "com.mbridge.msdk.foundation.same.broadcast.NetWorkChangeReceiver",
+      "action": "disable",
+      "note": "Network change broadcast receiver"
+    }
+  ],
+  "protected_patterns": []
+}

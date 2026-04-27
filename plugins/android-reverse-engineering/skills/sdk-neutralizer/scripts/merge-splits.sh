@@ -118,8 +118,10 @@ for split_apk in "$XAPK_ORIGIN_DIR/splits/"*.apk; do
   [[ -f "$split_apk" ]] || continue
   split_name=$(basename "$split_apk")
 
-  # Check if it's an ABI split by looking for lib/ inside
-  if unzip -l "$split_apk" 2>/dev/null | grep -q "lib/[^/]*/"; then
+  # Check if it's an ABI split — filename pattern first, then content-based fallback
+  if [[ "$split_name" =~ ^config\.(arm64_v8a|armeabi_v7a|x86|x86_64)\.apk$ ]]; then
+    abi_splits+=("$split_apk")
+  elif unzip -l "$split_apk" 2>/dev/null | grep -qE '\blib/[a-z0-9_-]+/.*\.so'; then
     abi_splits+=("$split_apk")
   # Check if it's a feature split (contains classes.dex or AndroidManifest.xml with split name)
   elif unzip -l "$split_apk" 2>/dev/null | grep -qE "(classes[0-9]*\.dex|^.*AndroidManifest\.xml)" && \
@@ -221,7 +223,7 @@ else
       for so_file in "$TMPDIR_NATIVE/lib/$abi/"*; do
         [[ -f "$so_file" ]] || continue
         cp "$so_file" "$DECODED_DIR/lib/$abi/"
-        (( lib_count++ ))
+        (( lib_count++ )) || true
       done
       ok "Merged $lib_count native libraries for $abi"
       echo "MERGE_ABI:$abi ($lib_count native libraries)"
@@ -265,7 +267,7 @@ else
     # Count extracted files (excluding directories)
     file_count=0
     while IFS= read -r -d '' f; do
-      (( file_count++ ))
+      (( file_count++ )) || true
     done < <(find "$TMPDIR_RES" -type f -print0 2>/dev/null)
 
     if (( file_count == 0 )); then
@@ -287,7 +289,7 @@ else
           target="$DECODED_DIR/res/$subdir_name/$(basename "$res_file")"
           if [[ ! -f "$target" ]]; then
             cp "$res_file" "$target"
-            (( res_copied++ ))
+            (( res_copied++ )) || true
           fi
         done
       done
@@ -303,7 +305,7 @@ else
         if [[ ! -f "$target" ]]; then
           mkdir -p "$(dirname "$target")"
           cp "$asset_file" "$target"
-          (( assets_copied++ ))
+          (( assets_copied++ )) || true
         fi
       done < <(find "$TMPDIR_RES/assets" -type f -print0 2>/dev/null)
     fi

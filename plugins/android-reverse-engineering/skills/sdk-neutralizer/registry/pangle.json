@@ -1,0 +1,88 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "pangle",
+  "display_name": "Pangle",
+  "description": "Pangle (ByteDance / TikTok) ad SDK",
+  "vendor": "ByteDance",
+  "category": "ads",
+  "known_versions": [],
+  "packages": [
+    "com.bytedance.sdk.openadsdk"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "obfuscated"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "com.bytedance.sdk.openadsdk.api.init.PAGSdk",
+        "methods": [
+          { "name": "init", "signature": "*", "stub": "return-void", "note": "Main SDK init" }
+        ]
+      }
+    ],
+    "ad_operations": [
+      {
+        "class": "com.bytedance.sdk.openadsdk.api.interstitial.PAGInterstitialAd",
+        "methods": [
+          { "name": "loadAd", "signature": "*", "stub": "return-void" },
+          { "name": "show", "signature": "*", "stub": "return-void" }
+        ]
+      },
+      {
+        "class": "com.bytedance.sdk.openadsdk.api.reward.PAGRewardedAd",
+        "methods": [
+          { "name": "loadAd", "signature": "*", "stub": "return-void" },
+          { "name": "show", "signature": "*", "stub": "return-void" }
+        ]
+      },
+      {
+        "class": "com.bytedance.sdk.openadsdk.api.banner.PAGBannerAd",
+        "methods": [
+          { "name": "loadAd", "signature": "*", "stub": "return-void" }
+        ]
+      }
+    ],
+    "deep_patterns": [
+      {
+        "package_glob": "com.bytedance.sdk.openadsdk.core.**",
+        "rule": "stub_all_concrete",
+        "note": "Internal implementation"
+      }
+    ]
+  },
+  "manifest_components": [
+    {
+      "type": "activity",
+      "class": "com.bytedance.sdk.openadsdk.activity.TTFullScreenVideoActivity",
+      "action": "disable",
+      "note": "Fullscreen video ad activity"
+    },
+    {
+      "type": "activity",
+      "class": "com.bytedance.sdk.openadsdk.activity.TTRewardVideoActivity",
+      "action": "disable",
+      "note": "Rewarded video ad activity"
+    },
+    {
+      "type": "activity",
+      "class": "com.bytedance.sdk.openadsdk.activity.TTInterstitialActivity",
+      "action": "disable",
+      "note": "Interstitial ad activity"
+    },
+    {
+      "type": "activity",
+      "class": "com.bytedance.sdk.openadsdk.activity.TTAdActivity",
+      "action": "disable",
+      "note": "Generic ad activity"
+    },
+    {
+      "type": "activity",
+      "class": "com.bytedance.sdk.openadsdk.activity.TTDelegateActivity",
+      "action": "disable",
+      "note": "Delegate activity for ad interactions"
+    }
+  ],
+  "protected_patterns": []
+}

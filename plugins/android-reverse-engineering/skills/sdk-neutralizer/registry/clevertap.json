@@ -1,0 +1,54 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "clevertap",
+  "display_name": "CleverTap",
+  "description": "CleverTap customer engagement and analytics SDK",
+  "vendor": "CleverTap",
+  "category": "analytics",
+  "known_versions": [],
+  "packages": [
+    "com.clevertap.android.sdk"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "readable"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "com.clevertap.android.sdk.CleverTapAPI",
+        "methods": [
+          { "name": "pushEvent", "signature": "*", "stub": "return-void", "note": "Push analytics event" },
+          { "name": "onUserLogin", "signature": "*", "stub": "return-void" },
+          { "name": "pushProfile", "signature": "*", "stub": "return-void" },
+          { "name": "recordEvent", "signature": "*", "stub": "return-void" },
+          { "name": "recordScreen", "signature": "*", "stub": "return-void" },
+          { "name": "pushNotificationClickedEvent", "signature": "*", "stub": "return-void" },
+          { "name": "pushNotificationViewedEvent", "signature": "*", "stub": "return-void" }
+        ]
+      }
+    ],
+    "ad_operations": [],
+    "deep_patterns": []
+  },
+  "manifest_components": [
+    {
+      "type": "receiver",
+      "class": "com.clevertap.android.sdk.pushnotification.CTPushNotificationReceiver",
+      "action": "disable",
+      "note": "Push notification receiver"
+    },
+    {
+      "type": "service",
+      "class": "com.clevertap.android.sdk.pushnotification.CTNotificationIntentService",
+      "action": "disable",
+      "note": "Notification intent service"
+    }
+  ],
+  "protected_patterns": [
+    {
+      "pattern": "*.getDefaultInstance()*",
+      "reason": "Singleton accessor — null causes NPE if called by app code"
+    }
+  ]
+}

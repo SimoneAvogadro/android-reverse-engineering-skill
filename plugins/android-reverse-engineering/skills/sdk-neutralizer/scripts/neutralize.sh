@@ -27,12 +27,32 @@ Options:
   --trackers      Neutralize only tracker/analytics SDK entry points
   --all           Neutralize both ads and trackers (default)
   --dry-run       Show what would be patched without modifying files
-  --backup        Create .smali.bak backups before patching (default)
-  --no-backup     Do not create backup files
+  --backup        Create .smali.bak backups before patching
+  --no-backup     Do not create backup files (default)
+  --cleanup-backups  Remove all .smali.bak files from the decoded directory
   --manifest      Patch AndroidManifest.xml to disable SDK components (default)
   --no-manifest   Skip manifest patching
-  --targets-file <file>  Load additional targets from a file (one per line:
-                         <smali-class>:<method-name>)
+  --targets-file <file>  Load additional targets from a file (one per line).
+                         Format: <class-path>:<method-name>
+                           com/example/MyClass:methodName   (searches all smali dirs)
+                           com/example/pkg/**:*             (wildcard — all methods in package)
+                           com/example/Class:*              (all methods in class)
+                         L prefix and ; suffix are auto-stripped:
+                           Lcom/example/MyClass;:init       (also valid)
+                         Lines starting with # are ignored.
+  --manifest-components-file <file>
+                         Load additional manifest components from a file.
+                         Format: one per line, class_substring|sdk_name
+                         Components are appended to the builtin lists.
+  --no-builtin-targets   Skip hardcoded patch_ad_targets() and patch_tracker_targets().
+                         Use when relying entirely on --targets-file (e.g., from
+                         registry-scan.py). Builtin manifest components are also
+                         skipped; use --manifest-components-file for registry-driven
+                         manifest patching.
+  --package <path>       Neutralize ALL methods in a smali package recursively.
+                         Stubs every non-abstract, non-native, non-constructor
+                         method. Can be specified multiple times.
+                         Example: --package guru/ads --package com/appsflyer
   --replay        Replay patches from a previous neutralize-manifest.json
   --save-manifest Save neutralize-manifest.json after patching (default)
   --no-save-manifest  Do not save neutralize-manifest.json
@@ -57,9 +77,13 @@ NEUTRALIZE_ADS=false
 NEUTRALIZE_TRACKERS=false
 NEUTRALIZE_ALL=true
 DRY_RUN=false
-DO_BACKUP=true
+DO_BACKUP=false
+DO_CLEANUP_BACKUPS=false
 DO_MANIFEST=true
 TARGETS_FILE=""
+MANIFEST_COMPONENTS_FILE=""
+NO_BUILTIN_TARGETS=false
+PACKAGE_PATHS=()
 DO_REPLAY=false
 DO_SAVE_MANIFEST=true
 
@@ -71,6 +95,7 @@ while [[ $# -gt 0 ]]; do
     --dry-run)      DRY_RUN=true; shift ;;
     --backup)       DO_BACKUP=true; shift ;;
     --no-backup)    DO_BACKUP=false; shift ;;
+    --cleanup-backups) DO_CLEANUP_BACKUPS=true; shift ;;
     --manifest)     DO_MANIFEST=true; shift ;;
     --no-manifest)  DO_MANIFEST=false; shift ;;
     --targets-file)
@@ -80,6 +105,21 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       TARGETS_FILE="$1"; shift ;;
+    --manifest-components-file)
+      shift
+      if [[ $# -eq 0 ]]; then
+        echo "Error: --manifest-components-file requires a file argument" >&2
+        exit 1
+      fi
+      MANIFEST_COMPONENTS_FILE="$1"; shift ;;
+    --no-builtin-targets) NO_BUILTIN_TARGETS=true; shift ;;
+    --package)
+      shift
+      if [[ $# -eq 0 ]]; then
+        echo "Error: --package requires a package path argument" >&2
+        exit 1
+      fi
+      PACKAGE_PATHS+=("$1"); shift ;;
     --replay)       DO_REPLAY=true; shift ;;
     --save-manifest)    DO_SAVE_MANIFEST=true; shift ;;
     --no-save-manifest) DO_SAVE_MANIFEST=false; shift ;;
@@ -169,39 +209,101 @@ patch_method() {
     found = 0
   }
 
-  # Match .method line containing our target method name
-  /^\.method / && $0 ~ "[ ;]" method "\\(" {
+  # count_param_registers(descriptor_params, is_static)
+  # Counts the number of registers required for method parameters.
+  # Instance methods have an implicit "this" (p0) taking 1 register.
+  # J (long) and D (double) each take 2 registers; all others take 1.
+  function count_param_registers(params, is_static,    i, c, count) {
+    count = 0
+    if (!is_static) count = 1  # p0 = this
+    i = 1
+    while (i <= length(params)) {
+      c = substr(params, i, 1)
+      if (c == "J" || c == "D") {
+        count += 2; i++
+      } else if (c == "L") {
+        count += 1
+        # Skip to ";"
+        while (i <= length(params) && substr(params, i, 1) != ";") i++
+        i++  # skip the ";"
+      } else if (c == "[") {
+        # Array: skip all leading "[", then the base type
+        while (i <= length(params) && substr(params, i, 1) == "[") i++
+        c = substr(params, i, 1)
+        if (c == "L") {
+          count += 1
+          while (i <= length(params) && substr(params, i, 1) != ";") i++
+          i++
+        } else {
+          # Primitive array
+          count += 1; i++
+        }
+      } else {
+        # Primitive: Z, B, C, S, I, F
+        count += 1; i++
+      }
+    }
+    return count
+  }
+
+  # Match .method line containing our target method name (skip abstract/native)
+  /^\.method / && !/ abstract / && !/ native / && $0 ~ "[ ;]" method "\\(" {
     in_target = 1
     found = 1
 
-    # Extract return type from method descriptor
-    # The descriptor is the last part: (params)ReturnType
+    # Determine if static
+    is_static = ($0 ~ / static /) ? 1 : 0
+
+    # Extract descriptor: everything between "(" and ")" is params,
+    # everything after ")" is return type
     line = $0
-    # Find the closing paren and get what follows
-    idx = index(line, ")")
-    if (idx > 0) {
-      ret_type = substr(line, idx + 1)
-      # Remove trailing whitespace
+    open_idx = index(line, "(")
+    close_idx = index(line, ")")
+    if (open_idx > 0 && close_idx > open_idx) {
+      params = substr(line, open_idx + 1, close_idx - open_idx - 1)
+      ret_type = substr(line, close_idx + 1)
       gsub(/[[:space:]]+$/, "", ret_type)
     } else {
+      params = ""
       ret_type = "V"
     }
 
-    # Determine stub type
+    # Count registers needed for parameters (including "this" for instance methods)
+    param_regs = count_param_registers(params, is_static)
+
+    # Determine stub type and registers needed for the stub itself
     if (ret_type == "V") {
       stub_type = "return-void"
-      stub_body = "    .registers 1\n\n    return-void"
+      stub_regs = 0  # return-void needs no registers beyond params
     } else if (ret_type == "Z" || ret_type == "I" || ret_type == "S" || \
                ret_type == "B" || ret_type == "C" || ret_type == "F") {
       stub_type = "const/4+return"
-      stub_body = "    .registers 1\n\n    const/4 v0, 0x0\n\n    return v0"
+      stub_regs = 1  # needs v0
     } else if (ret_type == "J" || ret_type == "D") {
       stub_type = "const-wide+return-wide"
-      stub_body = "    .registers 2\n\n    const-wide/16 v0, 0x0\n\n    return-wide v0"
+      stub_regs = 2  # needs v0, v1
     } else {
       # Object or array return type (L...; or [...)
       stub_type = "const/4+return-object"
-      stub_body = "    .registers 1\n\n    const/4 v0, 0x0\n\n    return-object v0"
+      stub_regs = 1  # needs v0
+    }
+
+    # Total registers = max(param_regs, stub_regs + param_regs)
+    # In Dalvik, .registers = local_vars + param_registers
+    # We need stub_regs local vars + param_regs for parameters
+    total_regs = stub_regs + param_regs
+    if (total_regs < 1) total_regs = 1  # minimum 1 register
+
+    # Build stub body
+    if (ret_type == "V") {
+      stub_body = "    .registers " total_regs "\n\n    return-void"
+    } else if (ret_type == "J" || ret_type == "D") {
+      stub_body = "    .registers " total_regs "\n\n    const-wide/16 v0, 0x0\n\n    return-wide v0"
+    } else if (ret_type == "Z" || ret_type == "I" || ret_type == "S" || \
+               ret_type == "B" || ret_type == "C" || ret_type == "F") {
+      stub_body = "    .registers " total_regs "\n\n    const/4 v0, 0x0\n\n    return v0"
+    } else {
+      stub_body = "    .registers " total_regs "\n\n    const/4 v0, 0x0\n\n    return-object v0"
     }
 
     if (dry_run == "true") {
@@ -232,21 +334,24 @@ patch_method() {
 
   # Outside target method — print line unchanged
   { print }
-  ' "$file" > "$tmp_file" 2> >(while IFS= read -r line; do
-    echo "$line"
-    if [[ "$line" == PATCHED:* ]]; then
-      METHODS_PATCHED=$((METHODS_PATCHED + 1))
-      patched=true
-      echo "$line" >> "$PATCH_LOG_FILE"
-    elif [[ "$line" == DRY_RUN:WOULD_PATCH:* ]]; then
-      METHODS_PATCHED=$((METHODS_PATCHED + 1))
-      patched=true
-    fi
-  done)
+  ' "$file" > "$tmp_file" 2>"${tmp_file}.stderr"
+
+  # Process stderr in the parent shell (not a subshell) so variables propagate
+  if grep -q '^PATCHED:\|^DRY_RUN:WOULD_PATCH:' "${tmp_file}.stderr" 2>/dev/null; then
+    patched=true
+    local patch_count
+    patch_count=$(grep -c '^PATCHED:\|^DRY_RUN:WOULD_PATCH:' "${tmp_file}.stderr")
+    METHODS_PATCHED=$((METHODS_PATCHED + patch_count))
+    # Append PATCHED lines to the patch log (not DRY_RUN lines)
+    grep '^PATCHED:' "${tmp_file}.stderr" >> "$PATCH_LOG_FILE" 2>/dev/null || true
+  fi
+  # Emit stderr lines to stderr for user visibility
+  cat "${tmp_file}.stderr" >&2
+  rm -f "${tmp_file}.stderr"
 
   if [[ "$DRY_RUN" == false ]] && [[ "$patched" == true ]]; then
     if [[ "$DO_BACKUP" == true ]]; then
-      cp "$file" "${file}.bak"
+      [[ -f "${file}.bak" ]] || cp "$file" "${file}.bak"
     fi
     mv "$tmp_file" "$file"
   else
@@ -280,6 +385,92 @@ find_and_patch() {
       done
     fi
   done
+}
+
+# =====================================================================
+# patch_all_methods() — Stub ALL non-abstract, non-native, non-constructor
+#                        methods in a smali file
+#
+# Arguments:
+#   $1 — smali file path
+#   $2 — SDK name (for reporting)
+# =====================================================================
+
+patch_all_methods() {
+  local file="$1"
+  local sdk_name="$2"
+
+  if [[ ! -f "$file" ]]; then
+    return
+  fi
+
+  # Extract class descriptor from the .class line
+  local class_desc
+  class_desc=$(grep -m1 '^\.class ' "$file" | grep -oP 'L[^ ;]+;' | head -1)
+  if [[ -z "$class_desc" ]]; then
+    return
+  fi
+
+  # Extract all method names that are patchable:
+  # - Not abstract, not native
+  # - Not <init> or <clinit> (constructors)
+  local methods
+  methods=$(awk '
+    /^\.method / {
+      # Skip abstract and native methods
+      if ($0 ~ / abstract / || $0 ~ / native /) next
+      # Extract method name from descriptor
+      # Format: .method [access] methodName(params)RetType
+      match($0, /[ ]([^ (]+)\(/, arr)
+      if (arr[1] != "" && arr[1] != "<init>" && arr[1] != "<clinit>") {
+        print arr[1]
+      }
+    }
+  ' "$file" | sort -u)
+
+  if [[ -z "$methods" ]]; then
+    return
+  fi
+
+  while IFS= read -r method_name; do
+    [[ -z "$method_name" ]] && continue
+    patch_method "$file" "$method_name" "$sdk_name" "$class_desc"
+  done <<< "$methods"
+}
+
+# =====================================================================
+# patch_packages() — Neutralize all methods in specified packages
+# =====================================================================
+
+patch_packages() {
+  if [[ ${#PACKAGE_PATHS[@]} -eq 0 ]]; then
+    return
+  fi
+
+  for pkg_path in "${PACKAGE_PATHS[@]}"; do
+    # Normalize: remove trailing slashes
+    pkg_path="${pkg_path%/}"
+    local sdk_label="Package:${pkg_path}"
+
+    echo "--- Neutralizing package: $pkg_path ---"
+    local pkg_file_count=0
+
+    for smali_dir in "${SMALI_DIRS[@]}"; do
+      local pkg_dir="$smali_dir/$pkg_path"
+      if [[ ! -d "$pkg_dir" ]]; then
+        continue
+      fi
+
+      # Find all .smali files recursively
+      while IFS= read -r -d '' smali_file; do
+        patch_all_methods "$smali_file" "$sdk_label"
+        pkg_file_count=$((pkg_file_count + 1))
+      done < <(find "$pkg_dir" -name "*.smali" -print0 2>/dev/null)
+    done
+
+    echo "  Processed $pkg_file_count smali file(s) in $pkg_path"
+  done
+  echo
 }
 
 # =====================================================================
@@ -317,12 +508,12 @@ patch_ad_targets() {
 
   # IronSource / LevelPlay
   find_and_patch "com/ironsource/mediationsdk/IronSource" \
-    "init,loadInterstitial,showInterstitial,showRewardedVideo,loadBanner" \
+    "init,loadInterstitial,showInterstitial,showRewardedVideo,loadRewardedVideo,loadBanner,showISDemandOnlyInterstitial,showISDemandOnlyRewardedVideo" \
     "IronSource" "Lcom/ironsource/mediationsdk/IronSource;"
 
   # AppLovin / MAX
   find_and_patch "com/applovin/sdk/AppLovinSdk" \
-    "getInstance,initializeSdk" \
+    "getInstance,initialize,initializeSdk" \
     "AppLovin" "Lcom/applovin/sdk/AppLovinSdk;"
 
   # Meta Audience Network
@@ -334,6 +525,9 @@ patch_ad_targets() {
   find_and_patch "com/vungle/warren/Vungle" \
     "init,loadAd,playAd" \
     "Vungle" "Lcom/vungle/warren/Vungle;"
+  find_and_patch "com/vungle/ads/VungleAds" \
+    "init" \
+    "Vungle" "Lcom/vungle/ads/VungleAds;"
   find_and_patch "com/vungle/ads/VungleInterstitial" \
     "load,show" \
     "Vungle" "Lcom/vungle/ads/VungleInterstitial;"
@@ -355,24 +549,64 @@ patch_ad_targets() {
     "load" \
     "InMobi" "Lcom/inmobi/ads/InMobiBanner;"
 
-  # Chartboost
+  # Chartboost (legacy API)
   find_and_patch "com/chartboost/sdk/Chartboost" \
     "startWithAppId,cacheInterstitial,showInterstitial,cacheRewardedVideo,showRewardedVideo" \
     "Chartboost" "Lcom/chartboost/sdk/Chartboost;"
+  # Chartboost (new ads API)
+  find_and_patch "com/chartboost/sdk/ads/Interstitial" \
+    "cache,show" \
+    "Chartboost" "Lcom/chartboost/sdk/ads/Interstitial;"
+  find_and_patch "com/chartboost/sdk/ads/Rewarded" \
+    "cache,show" \
+    "Chartboost" "Lcom/chartboost/sdk/ads/Rewarded;"
 
   # Pangle / TikTok (legacy API)
   find_and_patch "com/bytedance/sdk/openadsdk/TTAdSdk" \
     "init" \
     "Pangle" "Lcom/bytedance/sdk/openadsdk/TTAdSdk;"
   # Pangle new API
-  find_and_patch "com/pgl/sys/ces/PAGSdk" \
+  find_and_patch "com/bytedance/sdk/openadsdk/api/init/PAGSdk" \
     "init" \
-    "Pangle" "Lcom/pgl/sys/ces/PAGSdk;"
+    "Pangle" "Lcom/bytedance/sdk/openadsdk/api/init/PAGSdk;"
 
   # Mintegral
   find_and_patch "com/mbridge/msdk/MBridgeSDKFactory" \
     "getMBridgeSDK" \
     "Mintegral" "Lcom/mbridge/msdk/MBridgeSDKFactory;"
+  find_and_patch "com/mbridge/msdk/MBridgeSDK" \
+    "init,initAsync,preload" \
+    "Mintegral" "Lcom/mbridge/msdk/MBridgeSDK;"
+
+  # BidMachine
+  find_and_patch "io/bidmachine/BidMachine" \
+    "initialize" \
+    "BidMachine" "Lio/bidmachine/BidMachine;"
+
+  # Smaato
+  find_and_patch "com/smaato/sdk/core/SmaatoSdk" \
+    "init" \
+    "Smaato" "Lcom/smaato/sdk/core/SmaatoSdk;"
+
+  # Verve / HyBid (PubNative)
+  find_and_patch "net/pubnative/lite/sdk/HyBid" \
+    "initialize" \
+    "Verve" "Lnet/pubnative/lite/sdk/HyBid;"
+
+  # Ogury
+  find_and_patch "com/ogury/sdk/Ogury" \
+    "start" \
+    "Ogury" "Lcom/ogury/sdk/Ogury;"
+
+  # Fyber / DT Exchange (InnerActive)
+  find_and_patch "com/fyber/inneractive/sdk/external/InneractiveAdManager" \
+    "initialize" \
+    "Fyber" "Lcom/fyber/inneractive/sdk/external/InneractiveAdManager;"
+
+  # Amazon APS
+  find_and_patch "com/amazon/device/ads/AdRegistration" \
+    "setAppKey,enableTesting,enableLogging" \
+    "AmazonAPS" "Lcom/amazon/device/ads/AdRegistration;"
 }
 
 patch_tracker_targets() {
@@ -423,6 +657,16 @@ patch_tracker_targets() {
   find_and_patch "com/flurry/android/FlurryAgent" \
     "logEvent,setUserId,onStartSession,onEndSession" \
     "Flurry" "Lcom/flurry/android/FlurryAgent;"
+
+  # Facebook SDK core
+  find_and_patch "com/facebook/FacebookSdk" \
+    "sdkInitialize,fullyInitialize,setAutoInitEnabled,setAutoLogAppEventsEnabled" \
+    "Facebook" "Lcom/facebook/FacebookSdk;"
+
+  # Firebase Crashlytics
+  find_and_patch "com/google/firebase/crashlytics/FirebaseCrashlytics" \
+    "log,recordException,setUserId,setCustomKey,setCrashlyticsCollectionEnabled" \
+    "Firebase" "Lcom/google/firebase/crashlytics/FirebaseCrashlytics;"
 }
 
 # =====================================================================
@@ -486,11 +730,22 @@ patch_manifest() {
 
   local -a components_to_disable=()
 
-  if [[ "$NEUTRALIZE_ALL" == true ]] || [[ "$NEUTRALIZE_ADS" == true ]]; then
-    components_to_disable+=("${AD_COMPONENTS[@]}")
+  if [[ "$NO_BUILTIN_TARGETS" == false ]]; then
+    if [[ "$NEUTRALIZE_ALL" == true ]] || [[ "$NEUTRALIZE_ADS" == true ]]; then
+      components_to_disable+=("${AD_COMPONENTS[@]}")
+    fi
+    if [[ "$NEUTRALIZE_ALL" == true ]] || [[ "$NEUTRALIZE_TRACKERS" == true ]]; then
+      components_to_disable+=("${TRACKER_COMPONENTS[@]}")
+    fi
   fi
-  if [[ "$NEUTRALIZE_ALL" == true ]] || [[ "$NEUTRALIZE_TRACKERS" == true ]]; then
-    components_to_disable+=("${TRACKER_COMPONENTS[@]}")
+
+  # Load additional components from file (registry-scan.py output)
+  if [[ -n "$MANIFEST_COMPONENTS_FILE" ]] && [[ -f "$MANIFEST_COMPONENTS_FILE" ]]; then
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      [[ -z "$line" ]] && continue
+      [[ "$line" == \#* ]] && continue
+      components_to_disable+=("$line")
+    done < "$MANIFEST_COMPONENTS_FILE"
   fi
 
   if [[ "$DO_BACKUP" == true ]] && [[ "$DRY_RUN" == false ]]; then
@@ -553,6 +808,8 @@ patch_custom_targets() {
     [[ "$line" == \#* ]] && continue
 
     # Format: Lcom/example/Class;:methodName or com/example/Class:methodName
+    # Wildcards: com/example/pkg/**:* (all methods in package)
+    #            com/example/Class:* (all methods in class)
     local class_part="${line%%:*}"
     local method_part="${line##*:}"
 
@@ -565,9 +822,42 @@ patch_custom_targets() {
     class_part="${class_part#L}"
     class_part="${class_part%;}"
 
-    # Build class descriptor for reporting
-    local class_desc="L${class_part};"
+    # Handle package wildcard: com/example/pkg/** — treat as --package
+    if [[ "$class_part" == *"/**" ]]; then
+      local pkg_path="${class_part%/**}"
+      echo "  Wildcard target: neutralizing package $pkg_path"
+      for smali_dir in "${SMALI_DIRS[@]}"; do
+        local pkg_dir="$smali_dir/$pkg_path"
+        if [[ ! -d "$pkg_dir" ]]; then
+          continue
+        fi
+        while IFS= read -r -d '' smali_file; do
+          if [[ "$method_part" == "*" ]]; then
+            patch_all_methods "$smali_file" "Custom"
+          else
+            local file_class_desc
+            file_class_desc=$(grep -m1 '^\.class ' "$smali_file" | grep -oP 'L[^ ;]+;' | head -1)
+            patch_method "$smali_file" "$method_part" "Custom" "${file_class_desc:-Lunknown;}"
+          fi
+        done < <(find "$pkg_dir" -name "*.smali" -print0 2>/dev/null)
+      done
+      continue
+    fi
 
+    # Handle class wildcard: com/example/Class:* — all methods in one class
+    if [[ "$method_part" == "*" ]]; then
+      local class_desc="L${class_part};"
+      for smali_dir in "${SMALI_DIRS[@]}"; do
+        local smali_file="$smali_dir/$class_part.smali"
+        if [[ -f "$smali_file" ]]; then
+          patch_all_methods "$smali_file" "Custom"
+        fi
+      done
+      continue
+    fi
+
+    # Standard target: specific class + method
+    local class_desc="L${class_part};"
     find_and_patch "$class_part" "$method_part" "Custom" "$class_desc"
   done < "$TARGETS_FILE"
 }
@@ -631,6 +921,19 @@ if [[ "$DO_REPLAY" == true ]]; then
 fi
 
 # =====================================================================
+# Cleanup backups (if requested)
+# =====================================================================
+
+if [[ "$DO_CLEANUP_BACKUPS" == true ]]; then
+  bak_count=0
+  while IFS= read -r -d '' bakfile; do
+    rm -f "$bakfile"
+    bak_count=$((bak_count + 1))
+  done < <(find "$DECODED_DIR" -name "*.smali.bak" -print0 2>/dev/null)
+  echo "Cleaned up $bak_count .smali.bak file(s) from $DECODED_DIR"
+fi
+
+# =====================================================================
 # Main
 # =====================================================================
 
@@ -644,16 +947,21 @@ echo "Smali directories: ${SMALI_DIRS[*]}"
 echo
 
 # Patch SDK targets
-if [[ "$NEUTRALIZE_ALL" == true ]] || [[ "$NEUTRALIZE_ADS" == true ]]; then
-  echo "--- Neutralizing Ad SDK entry points ---"
-  patch_ad_targets
+if [[ "$NO_BUILTIN_TARGETS" == true ]]; then
+  echo "--- Skipping builtin targets (--no-builtin-targets) ---"
   echo
-fi
+else
+  if [[ "$NEUTRALIZE_ALL" == true ]] || [[ "$NEUTRALIZE_ADS" == true ]]; then
+    echo "--- Neutralizing Ad SDK entry points ---"
+    patch_ad_targets
+    echo
+  fi
 
-if [[ "$NEUTRALIZE_ALL" == true ]] || [[ "$NEUTRALIZE_TRACKERS" == true ]]; then
-  echo "--- Neutralizing Tracker SDK entry points ---"
-  patch_tracker_targets
-  echo
+  if [[ "$NEUTRALIZE_ALL" == true ]] || [[ "$NEUTRALIZE_TRACKERS" == true ]]; then
+    echo "--- Neutralizing Tracker SDK entry points ---"
+    patch_tracker_targets
+    echo
+  fi
 fi
 
 # Patch custom targets
@@ -661,6 +969,12 @@ if [[ -n "$TARGETS_FILE" ]]; then
   echo "--- Neutralizing custom targets from $TARGETS_FILE ---"
   patch_custom_targets
   echo
+fi
+
+# Patch packages (--package flag)
+if [[ ${#PACKAGE_PATHS[@]} -gt 0 ]]; then
+  echo "--- Neutralizing packages ---"
+  patch_packages
 fi
 
 # Patch manifest

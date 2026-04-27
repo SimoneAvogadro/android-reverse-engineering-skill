@@ -51,6 +51,7 @@ Output:
   VERIFY_OK:<output-apk>
   KEYSTORE_USED:<path>
   KEYSTORE_SOURCE:debug-standard|debug-previous|debug-generated|custom
+  KEYSTORE_ALIAS:<alias>
   SPLIT_SIGNED:<filename>       (XAPK only)
   XAPK_ASSEMBLED:<output-xapk>  (XAPK only)
 EOF
@@ -231,6 +232,8 @@ build_apk() {
   local no_res_flag="${1:-}"
   # Clean previous build artifacts
   rm -rf "$DECODED_DIR/dist/" 2>/dev/null || true
+  # Remove .smali.bak files that cause apktool warnings during rebuild
+  find "$DECODED_DIR" -name "*.smali.bak" -delete 2>/dev/null || true
   if apktool b $no_res_flag "$DECODED_DIR" 2>&1; then
     return 0
   fi
@@ -387,6 +390,7 @@ fi
 
 echo "KEYSTORE_USED:$KEYSTORE"
 echo "KEYSTORE_SOURCE:$KEYSTORE_SOURCE"
+echo "KEYSTORE_ALIAS:$KEY_ALIAS"
 
 info "Signing APK with $SIGNER..."
 
@@ -559,7 +563,6 @@ echo
 echo "WARNING: Play Integrity / SafetyNet will FAIL — expected for enterprise sideloading."
 if [[ "$IS_XAPK" == true ]] && [[ "$SINGLE_APK" == false ]]; then
   echo "Install via: adb install-multiple <base.apk> <split1.apk> <split2.apk> ..."
-  echo "         or: use a split APK installer (e.g., SAI — Split APKs Installer)"
   echo "         or: unzip the XAPK and run: adb install-multiple *.apk"
 elif [[ "$IS_XAPK" == true ]] && [[ "$SINGLE_APK" == true ]]; then
   echo "Install via: adb install $OUTPUT"

@@ -1,0 +1,49 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "amazon-ads",
+  "display_name": "Amazon Ads",
+  "description": "Amazon Mobile Ads SDK (APS / TAM)",
+  "vendor": "Amazon",
+  "category": "ads",
+  "known_versions": [],
+  "packages": [
+    "com.amazon.device.ads"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "obfuscated"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "com.amazon.device.ads.AdRegistration",
+        "methods": [
+          { "name": "setAppKey", "signature": "*", "stub": "return-void", "note": "SDK config — all overloads" },
+          { "name": "enableLogging", "signature": "*", "stub": "return-void" },
+          { "name": "enableTesting", "signature": "*", "stub": "return-void" },
+          { "name": "setMRAIDPolicy", "signature": "*", "stub": "return-void" },
+          { "name": "setMRAIDSupportedVersions", "signature": "*", "stub": "return-void" },
+          { "name": "setAdNetworkInfo", "signature": "*", "stub": "return-void" }
+        ]
+      }
+    ],
+    "ad_operations": [
+      {
+        "class": "com.amazon.device.ads.DTBAdRequest",
+        "methods": [
+          { "name": "loadAd", "signature": "*", "stub": "return-void" }
+        ]
+      }
+    ],
+    "deep_patterns": []
+  },
+  "manifest_components": [
+    {
+      "type": "activity",
+      "class": "com.amazon.device.ads.DTBAdActivity",
+      "action": "disable",
+      "note": "Ad display activity"
+    }
+  ],
+  "protected_patterns": []
+}

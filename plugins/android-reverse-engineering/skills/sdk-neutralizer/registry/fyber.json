@@ -1,0 +1,37 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "fyber",
+  "display_name": "Fyber / Digital Turbine",
+  "description": "Fyber (Inneractive / Digital Turbine) ad SDK",
+  "vendor": "Digital Turbine",
+  "category": "ads",
+  "known_versions": [],
+  "packages": [
+    "com.fyber.inneractive.sdk"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "obfuscated"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "com.fyber.inneractive.sdk.external.InneractiveAdManager",
+        "methods": [
+          { "name": "initialize", "signature": "*", "stub": "return-void", "note": "Main SDK init" }
+        ]
+      }
+    ],
+    "ad_operations": [
+      {
+        "class": "com.fyber.inneractive.sdk.external.InneractiveAdRequest",
+        "methods": [
+          { "name": "load", "signature": "*", "stub": "return-void" }
+        ]
+      }
+    ],
+    "deep_patterns": []
+  },
+  "manifest_components": [],
+  "protected_patterns": []
+}

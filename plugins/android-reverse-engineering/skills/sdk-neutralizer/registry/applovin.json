@@ -1,0 +1,98 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "applovin",
+  "display_name": "AppLovin / MAX",
+  "description": "AppLovin SDK and MAX mediation platform",
+  "vendor": "AppLovin",
+  "category": "ads_mediation",
+  "known_versions": ["13.3.0"],
+  "packages": [
+    "com.applovin.sdk",
+    "com.applovin.mediation",
+    "com.applovin.impl",
+    "com.applovin.adview"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "obfuscated",
+    "internal_prefix": "single-letter"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "com.applovin.sdk.AppLovinSdk",
+        "methods": [
+          { "name": "initialize", "signature": "*", "stub": "return-void", "note": "Main SDK init" },
+          { "name": "initializeSdk", "signature": "*", "stub": "return-void" }
+        ]
+      }
+    ],
+    "ad_operations": [
+      {
+        "class": "com.applovin.mediation.MaxInterstitialAd",
+        "methods": [
+          { "name": "loadAd", "signature": "*", "stub": "return-void" },
+          { "name": "showAd", "signature": "*", "stub": "return-void" },
+          { "name": "isReady", "signature": "*", "stub": "return-false/0" },
+          { "name": "destroy", "signature": "*", "stub": "return-void" }
+        ]
+      },
+      {
+        "class": "com.applovin.mediation.MaxRewardedAd",
+        "methods": [
+          { "name": "loadAd", "signature": "*", "stub": "return-void" },
+          { "name": "showAd", "signature": "*", "stub": "return-void" },
+          { "name": "isReady", "signature": "*", "stub": "return-false/0" },
+          { "name": "destroy", "signature": "*", "stub": "return-void" }
+        ]
+      },
+      {
+        "class": "com.applovin.mediation.MaxAdView",
+        "methods": [
+          { "name": "loadAd", "signature": "*", "stub": "return-void" },
+          { "name": "destroy", "signature": "*", "stub": "return-void" },
+          { "name": "startAutoRefresh", "signature": "*", "stub": "return-void" },
+          { "name": "stopAutoRefresh", "signature": "*", "stub": "return-void" }
+        ]
+      }
+    ],
+    "deep_patterns": [
+      {
+        "package_glob": "com.applovin.impl.**",
+        "rule": "stub_all_concrete",
+        "note": "Internal obfuscated implementation — version-dependent"
+      },
+      {
+        "package_glob": "com.applovin.mediation.adapters.**",
+        "rule": "stub_all_void",
+        "note": "Third-party adapters bundled with MAX"
+      }
+    ]
+  },
+  "manifest_components": [
+    {
+      "type": "activity",
+      "class": "com.applovin.adview.AppLovinFullscreenActivity",
+      "action": "disable",
+      "note": "Fullscreen ad display activity"
+    },
+    {
+      "type": "activity",
+      "class": "com.applovin.sdk.AppLovinWebViewActivity",
+      "action": "disable",
+      "note": "WebView-based ad activity"
+    },
+    {
+      "type": "provider",
+      "class": "com.applovin.sdk.AppLovinInitProvider",
+      "action": "disable",
+      "note": "Auto-init ContentProvider"
+    }
+  ],
+  "protected_patterns": [
+    {
+      "pattern": "*.getActivity()*",
+      "reason": "Returns Activity reference — null causes NPE"
+    }
+  ]
+}

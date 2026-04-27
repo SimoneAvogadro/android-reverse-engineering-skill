@@ -1,0 +1,47 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "inmobi",
+  "display_name": "InMobi",
+  "description": "InMobi ad SDK",
+  "vendor": "InMobi",
+  "category": "ads",
+  "known_versions": [],
+  "packages": [
+    "com.inmobi.sdk",
+    "com.inmobi.ads"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "obfuscated"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "com.inmobi.sdk.InMobiSdk",
+        "methods": [
+          { "name": "init", "signature": "*", "stub": "return-void", "note": "Main SDK init — all overloads" }
+        ]
+      }
+    ],
+    "ad_operations": [
+      {
+        "class": "com.inmobi.ads.InMobiInterstitial",
+        "methods": [
+          { "name": "load", "signature": "*", "stub": "return-void" },
+          { "name": "show", "signature": "*", "stub": "return-void" },
+          { "name": "isReady", "signature": "*", "stub": "return-false/0" }
+        ]
+      },
+      {
+        "class": "com.inmobi.ads.InMobiBanner",
+        "methods": [
+          { "name": "load", "signature": "*", "stub": "return-void" },
+          { "name": "destroy", "signature": "*", "stub": "return-void" }
+        ]
+      }
+    ],
+    "deep_patterns": []
+  },
+  "manifest_components": [],
+  "protected_patterns": []
+}

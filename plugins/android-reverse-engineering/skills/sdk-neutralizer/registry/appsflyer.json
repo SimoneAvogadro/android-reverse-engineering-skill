@@ -1,0 +1,98 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "appsflyer",
+  "display_name": "AppsFlyer",
+  "description": "AppsFlyer mobile attribution and analytics SDK",
+  "vendor": "AppsFlyer",
+  "category": "attribution",
+  "known_versions": [],
+  "packages": [
+    "com.appsflyer"
+  ],
+  "obfuscation": {
+    "public_api": "mixed",
+    "internals": "obfuscated",
+    "internal_prefix": "AF"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "com.appsflyer.internal.AFa1uSDK",
+        "methods": [
+          { "name": "start", "signature": "*", "stub": "return-void", "note": "Main SDK start — all overloads" }
+        ]
+      },
+      {
+        "class": "com.appsflyer.unity.AppsFlyerAndroidWrapper",
+        "methods": [
+          { "name": "initSdk", "signature": "*", "stub": "return-void", "note": "Unity wrapper init" },
+          { "name": "startTracking", "signature": "*", "stub": "return-void" },
+          { "name": "logEvent", "signature": "*", "stub": "return-void" },
+          { "name": "setCustomerUserId", "signature": "*", "stub": "return-void" },
+          { "name": "setCurrencyCode", "signature": "*", "stub": "return-void" },
+          { "name": "setAdditionalData", "signature": "*", "stub": "return-void" },
+          { "name": "sendPushNotificationData", "signature": "*", "stub": "return-void" },
+          { "name": "setUserEmails", "signature": "*", "stub": "return-void" },
+          { "name": "setDebug", "signature": "*", "stub": "return-void" },
+          { "name": "getConversionData", "signature": "*", "stub": "return-void" },
+          { "name": "attributeAndOpenStore", "signature": "*", "stub": "return-void" },
+          { "name": "recordLocation", "signature": "*", "stub": "return-void" },
+          { "name": "recordCrossPromoteImpression", "signature": "*", "stub": "return-void" },
+          { "name": "setPhoneNumber", "signature": "*", "stub": "return-void" },
+          { "name": "setSharingFilterForPartners", "signature": "*", "stub": "return-void" },
+          { "name": "setPartnerData", "signature": "*", "stub": "return-void" },
+          { "name": "setDisableNetworkData", "signature": "*", "stub": "return-void" },
+          { "name": "performLatestCPI", "signature": "*", "stub": "return-void" }
+        ]
+      }
+    ],
+    "ad_operations": [],
+    "deep_patterns": [
+      {
+        "package_glob": "com.appsflyer.internal.**",
+        "rule": "stub_all_void",
+        "note": "Internal obfuscated classes (AF* prefix) — 649+ methods, V1-proven safe"
+      },
+      {
+        "package_glob": "com.appsflyer.share.**",
+        "rule": "stub_all_void",
+        "note": "Sharing module — 11 methods, V1-proven safe"
+      },
+      {
+        "package_glob": "com.appsflyer.unity.**",
+        "rule": "stub_all_void",
+        "note": "Unity wrapper — 99+ methods, V1-proven safe"
+      }
+    ]
+  },
+  "manifest_components": [
+    {
+      "type": "receiver",
+      "class": "com.appsflyer.MultipleInstallBroadcastReceiver",
+      "action": "disable",
+      "note": "Install referrer receiver"
+    },
+    {
+      "type": "receiver",
+      "class": "com.appsflyer.SingleInstallBroadcastReceiver",
+      "action": "disable",
+      "note": "Single install referrer receiver"
+    },
+    {
+      "type": "receiver",
+      "class": "com.appsflyer.internal.AFSingleInstallBroadcastReceiver",
+      "action": "disable",
+      "note": "Internal single install referrer receiver"
+    }
+  ],
+  "protected_patterns": [
+    {
+      "pattern": "*.getActivity()*",
+      "reason": "Returns Activity reference — null causes NPE"
+    },
+    {
+      "pattern": "*.getApplicationContext()*",
+      "reason": "Returns Context — null causes NPE"
+    }
+  ]
+}

@@ -98,86 +98,135 @@ If the input is an XAPK, inform the user that it's a split APK bundle. Let them 
 
 ### Phase 3: Identify Targets
 
-Target identification has three sub-phases. The goal is to find all SDK entry points to neutralize while minimizing manual approval prompts.
+Target identification has four sub-phases. The goal is to combine deterministic registry matching with heuristic discovery for maximum coverage.
 
-#### Phase 3a — Built-in Catalog Detection
+**Depth levels** control how aggressively SDKs are neutralized:
+- **Depth 1** (default, safest): Only SDK entry points (init, start). Disables SDK initialization.
+- **Depth 2**: Entry points + ad operations (load, show, cache). Safety net if init stub is bypassed.
+- **Depth 3** (most aggressive): All above + deep patterns (bulk-stub internal packages). Version-dependent.
 
-Use `neutralize.sh --dry-run` to detect known SDK targets. This is more reliable than `find-ads.sh`/`find-trackers.sh` because it searches smali directly (not Java source) and matches the exact patterns that will be patched.
+Ask the user which depth level to use. Default to depth 1 unless they request more.
 
-**Action**: Run dry-run detection.
+#### Phase 3a — Registry Scan (Known SDKs)
 
+Run `registry-scan.py` to match the decoded APK against the SDK registry (29 SDKs, 123 entry points, 156 ad operations, 30 deep patterns).
+
+**Action**: Run registry scan.
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/registry-scan.py "<decoded-dir>" \
+  --registry "${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/registry/" \
+  --depth 1 --category all \
+  --output-dir "<decoded-dir>"
+```
+
+Parse stdout for:
+- `MATCHED:<sdk_id>:<display_name>:<category>:<n_targets>` — matched SDK with target count
+- `UNKNOWN_PACKAGE:<package>:<class_count>` — unknown packages (candidates for Phase 3b)
+- `REGISTRY_TARGETS:<path>` — generated targets file for neutralize.sh
+- `REGISTRY_MANIFEST:<path>` — generated manifest components file
+
+Present matched SDKs as a table:
+
+| SDK | Category | Depth | Targets | Manifest Components |
+|---|---|---|---|---|
+| Google AdMob | ads | 1 | 2 entry points | 3 components |
+| Firebase Analytics | analytics | 1 | 8 entry points | 7 components |
+| AppsFlyer | attribution | 1 | 19 entry points | 3 components |
+| ... | | | | |
+
+If the user requests **depth 2 or 3**, re-run registry-scan.py with the higher depth level.
+
+**Fallback**: If Python 3 is not available, fall back to the builtin catalog:
 ```bash
 bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/neutralize.sh <decoded-dir> --all --dry-run
 ```
 
-Parse the output for:
-- `DRY_RUN:WOULD_PATCH:` lines — smali methods that would be stubbed
-- `DRY_RUN:WOULD_DISABLE:` lines — manifest components that would be disabled
-
-**NOTE**: Do NOT use `find-ads.sh` or `find-trackers.sh` here — those scripts search Java/Kotlin source (`.java`, `.kt`), not smali. The decoded directory from Phase 2 contains only smali bytecode, so those scripts will find nothing.
-
-#### Phase 3b — Custom/Proprietary SDK Discovery (if needed)
+#### Phase 3b — Unknown SDK Discovery
 
 Activate this sub-phase when:
-- The user mentions a specific SDK not in the built-in catalog (e.g., `guru/ads/fusion`, `com/proprietary/analytics`)
-- The dry-run found few or no targets but the user expects more
-- The user asks to find "all" trackers/ads, including custom/proprietary ones
+- `registry-scan.py` reported `UNKNOWN_PACKAGE:` candidates
+- The user asks to discover SDKs beyond the registry
+- Few matches in Phase 3a but the user expects more
 
-**CRITICAL — Use Claude Code built-in tools, NOT bash commands.** Glob, Grep, and Read are auto-approved and require no manual user approval. Using `bash find`, `bash grep`, or `bash head` forces the user to approve each command individually.
+The registry scan automatically filters unknowns:
+- Excludes obfuscated packages (single-letter names like `a/`, `b/c/`)
+- Excludes known utility libraries (okhttp, retrofit, gson, protobuf, kotlinx, androidx, etc.)
+- Excludes the app's own package (from AndroidManifest)
+- Only includes packages with 10+ classes and 3+ name segments
 
-**Discovery workflow using built-in tools:**
+**CRITICAL — Use Claude Code built-in tools, NOT bash commands.** Glob, Grep, and Read are auto-approved.
 
-1. **Find smali files by package pattern** — use Glob:
-   ```
-   Glob: **/smali*/com/guru/**/*.smali
-   Glob: **/smali*/com/proprietary/analytics/**/*.smali
-   ```
+**Discovery workflow** for each unknown package candidate:
 
-2. **Find SDK method signatures** — use Grep on the matched files:
+1. **List main classes** — use Glob:
    ```
-   Grep: pattern="^\.method.*(init|track|log|show|load|send|report|emit)"
-   Grep: pattern="^\.method.*getInstance"
-   ```
-
-3. **Find SDK invocations from app code** — use Grep on the app's own smali:
-   ```
-   Grep: pattern="invoke-(static|virtual|direct).*Lcom/guru/ads/"
-   Grep: pattern="invoke-(static|virtual|direct).*Lcom/proprietary/analytics/"
+   Glob: **/smali*/com/vendor/sdk/**/*.smali
    ```
 
-4. **Examine specific files** — use Read to inspect method bodies and confirm they are SDK entry points worth neutralizing.
+2. **Search for SDK patterns** — use Grep:
+   ```
+   Grep: pattern="\.method.*(init|initialize|start|load|show)" path=<smali-dir>/com/vendor/sdk/
+   Grep: pattern="const-string.*http" path=<smali-dir>/com/vendor/sdk/
+   ```
 
-**Build the custom targets file** with discovered entry points, one per line, in the format:
+3. **Check manifest** for components (activities, services, providers, receivers) with that package.
 
-```
-<smali-class-path>:<method-name>
-```
+4. **Classify**: "probable SDK ads", "probable SDK tracker", "utility library", "app code"
 
-For example:
-```
-smali/com/guru/ads/fusion/FusionAd.smali:initialize
-smali/com/guru/ads/fusion/FusionAd.smali:showAd
-smali/com/guru/ads/fusion/FusionTracker.smali:trackEvent
-```
+Present results as a table:
 
-**Action**: Write the targets file.
+| Package | Classes | SDK Patterns | Classification | Suggested Action |
+|---|---|---|---|---|
+| `com/vendor/analytics` | 45 | init, logEvent, URL endpoints | Tracker | Deep analysis |
+| `com/vendor/mediator` | 120 | no direct init | Mediator/wrapper | Check SDK refs |
+| `org/example/util` | 8 | no SDK patterns | Utility library | Ignore |
 
-```
-Write: <decoded-dir>/custom-targets.txt
-```
+#### Phase 3c — Deep Analysis (opt-in, explicit confirmation required)
 
-#### Phase 3c — Compile Target List and Confirm
+**IMPORTANT**: Before proceeding, present the candidates and ask:
+> "I identified N SDK candidates for deep analysis. This involves web search and smali reverse engineering. Which ones should I analyze? (list numbers or 'all')"
 
-Present a summary table of all targets to the user:
+**Only after user confirmation**, for each selected SDK:
 
-| SDK | Category | Source | Entry Points |
-|---|---|---|---|
-| AdMob | Ads | Built-in catalog | 5 methods, 2 components |
-| Firebase Analytics | Trackers | Built-in catalog | 3 methods, 1 component |
-| guru/ads/fusion | Ads | Custom discovery | 3 methods |
-| ... | | | |
+1. **Web search**: Search for the package name to identify the SDK:
+   - `"com.vendor.sdk" android SDK`
+   - `site:maven.org "com.vendor.sdk"`
+   - `"com.vendor.sdk" gradle dependency`
 
-Ask which categories/SDKs to neutralize:
+2. **Read main smali classes**: Identify the public API (init, config, entry points).
+
+3. **Propose to the user**: "This appears to be **X SDK** version Y, used for Z. Entry points found: `init()`, `start()`, `logEvent()`. Neutralize it?"
+
+4. **If confirmed**, generate entry for targets file:
+   ```
+   # [X SDK] discovered via deep analysis
+   com/vendor/sdk/MainClass:init
+   com/vendor/sdk/MainClass:start
+   ```
+
+5. **Optionally**, propose a draft registry JSON entry for future inclusion.
+
+#### Phase 3d — Compile & Confirm
+
+Merge all target sources:
+- **Registry targets** from Phase 3a (`registry-targets.txt`)
+- **Custom discovery** from Phase 3b/3c (append to `custom-targets.txt`)
+- **User-provided** `--targets-file` if any
+
+Present the complete summary:
+
+| SDK | Category | Source | Depth | Targets | Manifest Components |
+|---|---|---|---|---|---|
+| Google AdMob | ads | Registry | 1 | 2 methods | 3 components |
+| Firebase Analytics | analytics | Registry | 1 | 8 methods | 7 components |
+| guru/ads/fusion | ads | Discovery | - | 3 methods | 0 components |
+| ... | | | | | |
+
+**Ads vs Trackers distinction**: Always present ads and trackers separately — they have different implications (revenue impact vs privacy).
+
+Ask for final confirmation:
+- Which categories/SDKs to neutralize
 - `--ads` — only ad SDKs
 - `--trackers` — only tracker/analytics SDKs
 - `--all` — both (default)
@@ -187,34 +236,55 @@ Ask which categories/SDKs to neutralize:
 
 Run the neutralization script. **Always run a dry-run first** to preview changes.
 
-**Action**: Dry-run, then apply.
+#### Registry-driven mode (preferred, requires Python 3.6+)
+
+Uses `registry-targets.txt` and `registry-manifest.txt` generated by Phase 3a. The `--no-builtin-targets` flag disables hardcoded targets to rely entirely on the registry.
 
 ```bash
-# Preview changes (no files modified)
-bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/neutralize.sh <decoded-dir> --all --dry-run
+# Preview (dry-run)
+bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/neutralize.sh <decoded-dir> \
+  --no-builtin-targets --dry-run \
+  --targets-file <decoded-dir>/registry-targets.txt \
+  --manifest-components-file <decoded-dir>/registry-manifest.txt
 
-# Apply changes (with backups)
-bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/neutralize.sh <decoded-dir> --all
+# Apply
+bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/neutralize.sh <decoded-dir> \
+  --no-builtin-targets \
+  --targets-file <decoded-dir>/registry-targets.txt \
+  --manifest-components-file <decoded-dir>/registry-manifest.txt
 ```
 
-**If Phase 3b produced custom targets**, add `--targets-file` to both commands:
+**If Phase 3b/3c produced custom targets**, add a second `--targets-file` or append to the registry file:
 
 ```bash
-# Preview with custom targets
-bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/neutralize.sh <decoded-dir> --all --dry-run --targets-file <decoded-dir>/custom-targets.txt
+# Append custom targets to registry targets
+cat <decoded-dir>/custom-targets.txt >> <decoded-dir>/registry-targets.txt
+```
 
-# Apply with custom targets
-bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/neutralize.sh <decoded-dir> --all --targets-file <decoded-dir>/custom-targets.txt
+#### Fallback mode (no Python)
+
+If Python 3 is not available, use the builtin hardcoded targets:
+
+```bash
+# Preview
+bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/neutralize.sh <decoded-dir> --all --dry-run
+
+# Apply
+bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/neutralize.sh <decoded-dir> --all
 ```
 
 Parse the output for `PATCHED:` and `MANIFEST_DISABLED:` lines to build the report.
 
-Options:
-- `--ads` / `--trackers` / `--all` — target selection
+#### Options reference
+
+- `--no-builtin-targets` — skip hardcoded target functions, rely on `--targets-file` + `--manifest-components-file`
+- `--targets-file <file>` — load targets from file (registry-scan.py output or custom)
+- `--manifest-components-file <file>` — load manifest components from file (registry-scan.py output)
+- `--ads` / `--trackers` / `--all` — target selection (for builtin mode)
 - `--dry-run` — preview only
 - `--no-backup` — skip `.smali.bak` creation
 - `--no-manifest` — skip manifest patching
-- `--targets-file <file>` — additional custom targets
+- `--package <path>` — neutralize all methods in a package recursively
 - `--replay` — replay patches from a previous `neutralize-manifest.json` (useful after re-decode)
 - `--no-save-manifest` — skip saving `neutralize-manifest.json`
 
@@ -231,7 +301,7 @@ Rebuild the decoded directory back into a signed APK (or XAPK if the original wa
 > How would you like to rebuild the neutralized app?
 >
 > 1. **Merged single APK** (recommended for sideloading) — merges split contents into one APK, installable with standard `adb install`. May be missing some locale/density resources.
-> 2. **XAPK bundle** (preserves original structure) — requires `adb install-multiple` or SAI app to install. All splits preserved exactly.
+> 2. **XAPK bundle** (preserves original structure) — requires `adb install-multiple` to install. All splits preserved exactly.
 
 **If the user chooses option 1 (merged single APK):**
 
@@ -376,7 +446,7 @@ If the original input was an XAPK and the user chose merged single APK output, i
 - Signed with: auto-detected debug key / generated debug key / custom keystore
 - Keystore used: `<path>` (source: `KEYSTORE_SOURCE:` value)
 - Install via: `adb install <path>` (APK / merged APK) or `adb install-multiple <base.apk> <split1.apk> ...` (XAPK)
-- For XAPK: can also use SAI (Split APKs Installer) or unzip and `adb install-multiple *.apk`
+- For XAPK: unzip the XAPK and run `adb install-multiple *.apk`
 ```
 
 **Next steps to suggest:**

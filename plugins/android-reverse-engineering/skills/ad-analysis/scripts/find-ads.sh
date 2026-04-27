@@ -28,10 +28,14 @@ Options:
   --manifest      Search only for AndroidManifest.xml ad markers
   --entrypoints   Search only for ad SDK calls in app code (excludes library packages)
   --all           Search all patterns (default)
+  --summary       Output a compact summary table with confidence scoring
+  --json          Output results as machine-readable JSON
   -h, --help      Show this help message
 
 Output:
-  Results are printed as file:line:match for easy navigation.
+  Default: Results are printed as file:line:match for easy navigation.
+  --summary: Compact table with SDK | Sections | File Matches | Confidence | Status
+  --json: JSON object with per-SDK detection results and confidence scores
 EOF
   exit 0
 }
@@ -53,6 +57,8 @@ SEARCH_CONSENT=false
 SEARCH_MANIFEST=false
 SEARCH_ENTRYPOINTS=false
 SEARCH_ALL=true
+OUTPUT_SUMMARY=false
+OUTPUT_JSON=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -72,6 +78,8 @@ while [[ $# -gt 0 ]]; do
     --manifest)    SEARCH_MANIFEST=true;    SEARCH_ALL=false; shift ;;
     --entrypoints) SEARCH_ENTRYPOINTS=true; SEARCH_ALL=false; shift ;;
     --all)         SEARCH_ALL=true; shift ;;
+    --summary)     OUTPUT_SUMMARY=true; shift ;;
+    --json)        OUTPUT_JSON=true; shift ;;
     -h|--help)     usage ;;
     -*)            echo "Error: Unknown option $1" >&2; usage ;;
     *)             SOURCE_DIR="$1"; shift ;;
@@ -90,22 +98,98 @@ fi
 
 GREP_OPTS="-rn --include=*.java --include=*.kt"
 
+# Summary/JSON mode
+if [[ "$OUTPUT_SUMMARY" == true ]] || [[ "$OUTPUT_JSON" == true ]]; then
+  SUMMARY_MODE=true
+  SEARCH_ALL=true
+else
+  SUMMARY_MODE=false
+fi
+
+declare -A SDK_CLASS_MATCHES
+declare -A SDK_STRING_MATCHES
+declare -A SDK_SECTIONS_HIT
+
 section() {
-  echo
-  echo "==== $1 ===="
-  echo
+  if [[ "$SUMMARY_MODE" == true ]]; then
+    CURRENT_SECTION="$1"
+  else
+    echo
+    echo "==== $1 ===="
+    echo
+  fi
 }
 
 run_grep() {
   local pattern="$1"
   # shellcheck disable=SC2086
-  grep $GREP_OPTS -E "$pattern" "$SOURCE_DIR" 2>/dev/null || true
+  local result
+  result=$(grep $GREP_OPTS -E "$pattern" "$SOURCE_DIR" 2>/dev/null || true)
+  if [[ "$SUMMARY_MODE" == true ]]; then
+    if [[ -n "$result" ]]; then
+      local count
+      count=$(echo "$result" | wc -l)
+      _tally_section_result "$count"
+    fi
+  else
+    echo "$result"
+  fi
 }
 
 run_grep_xml() {
   local pattern="$1"
-  grep -rn --include="*.xml" -E "$pattern" "$SOURCE_DIR" 2>/dev/null || true
+  local result
+  result=$(grep -rn --include="*.xml" -E "$pattern" "$SOURCE_DIR" 2>/dev/null || true)
+  if [[ "$SUMMARY_MODE" == true ]]; then
+    if [[ -n "$result" ]]; then
+      local count
+      count=$(echo "$result" | wc -l)
+      _tally_section_result "$count"
+    fi
+  else
+    echo "$result"
+  fi
 }
+
+_tally_section_result() {
+  local count="$1"
+  local sdk=""
+  local confidence="class"
+
+  case "$CURRENT_SECTION" in
+    "AdMob"*)                       sdk="AdMob" ;;
+    "Unity Ads"*)                   sdk="UnityAds" ;;
+    "IronSource"*)                  sdk="IronSource" ;;
+    "AppLovin"*)                    sdk="AppLovin" ;;
+    "Meta"*|"Meta AN"*)             sdk="MetaAN" ;;
+    "Vungle"*)                      sdk="Vungle" ;;
+    "InMobi"*)                      sdk="InMobi" ;;
+    "Chartboost"*)                  sdk="Chartboost" ;;
+    "Pangle"*)                      sdk="Pangle" ;;
+    "Mintegral"*)                   sdk="Mintegral" ;;
+    "Cross-SDK"*)                   sdk="CrossSDK"; confidence="string" ;;
+    "Mediation"*)                   sdk="Mediation"; confidence="class" ;;
+    "Consent"*)                     sdk="Consent"; confidence="class" ;;
+    "AndroidManifest"*)             sdk="Manifest"; confidence="class" ;;
+    "Entry Points"*)                sdk="EntryPoints"; confidence="class" ;;
+    *)                              sdk="Other"; confidence="string" ;;
+  esac
+
+  if [[ "$confidence" == "class" ]]; then
+    SDK_CLASS_MATCHES["$sdk"]=$(( ${SDK_CLASS_MATCHES["$sdk"]:-0} + count ))
+  else
+    SDK_STRING_MATCHES["$sdk"]=$(( ${SDK_STRING_MATCHES["$sdk"]:-0} + count ))
+  fi
+
+  local existing="${SDK_SECTIONS_HIT["$sdk"]:-}"
+  if [[ -n "$existing" ]]; then
+    SDK_SECTIONS_HIT["$sdk"]="${existing}, ${CURRENT_SECTION}"
+  else
+    SDK_SECTIONS_HIT["$sdk"]="${CURRENT_SECTION}"
+  fi
+}
+
+CURRENT_SECTION=""
 
 # --- AdMob / Google Mobile Ads ---
 if [[ "$SEARCH_ALL" == true || "$SEARCH_ADMOB" == true ]]; then
@@ -285,12 +369,102 @@ if [[ "$SEARCH_ALL" == true || "$SEARCH_ENTRYPOINTS" == true ]]; then
   ENTRYPOINT_PATTERN='(MobileAds\.initialize|MobileAds\.setRequestConfiguration|InterstitialAd\.load|RewardedAd\.load|RewardedInterstitialAd\.load|AppOpenAd\.load|AdView\.loadAd|AdLoader\.Builder|UnityAds\.initialize|UnityAds\.load|UnityAds\.show|IronSource\.init|IronSource\.loadInterstitial|IronSource\.showInterstitial|IronSource\.showRewardedVideo|IronSource\.loadBanner|AppLovinSdk\.getInstance|AppLovinSdk\.initializeSdk|MaxInterstitialAd|MaxRewardedAd|MaxAdView|AudienceNetworkAds\.initialize|Vungle\.init|Vungle\.loadAd|Vungle\.playAd|InMobiSdk\.init|Chartboost\.startWithAppId|TTAdSdk\.init|PAGSdk\.init|MBridgeSDKFactory\.getMBridgeSDK|LevelPlayInterstitialAd|LevelPlayRewardedAd|LevelPlayBannerAdView)'
 
   # shellcheck disable=SC2086
-  grep -rn --include="*.java" --include="*.kt" "${EXCLUDE_DIRS[@]}" -E "$ENTRYPOINT_PATTERN" "$SOURCE_DIR" 2>/dev/null || true
-
-  echo
-  echo "NOTE: Only calls from app code are shown above. Library-internal calls are excluded."
-  echo "If no results appear, ad SDKs may only be invoked internally via mediation adapters."
+  local ep_result
+  ep_result=$(grep -rn --include="*.java" --include="*.kt" "${EXCLUDE_DIRS[@]}" -E "$ENTRYPOINT_PATTERN" "$SOURCE_DIR" 2>/dev/null || true)
+  if [[ "$SUMMARY_MODE" == true ]]; then
+    if [[ -n "$ep_result" ]]; then
+      local count
+      count=$(echo "$ep_result" | wc -l)
+      _tally_section_result "$count"
+    fi
+  else
+    echo "$ep_result"
+    echo
+    echo "NOTE: Only calls from app code are shown above. Library-internal calls are excluded."
+    echo "If no results appear, ad SDKs may only be invoked internally via mediation adapters."
+  fi
 fi
 
-echo
-echo "=== Search complete ==="
+# =====================================================================
+# Summary / JSON output
+# =====================================================================
+
+if [[ "$SUMMARY_MODE" == true ]]; then
+  AD_SDKS=("AdMob" "UnityAds" "IronSource" "AppLovin" "MetaAN" "Vungle" "InMobi" "Chartboost" "Pangle" "Mintegral")
+
+  if [[ "$OUTPUT_JSON" == true ]]; then
+    printf '{\n  "ad_sdks": [\n'
+    first=true
+    for sdk in "${AD_SDKS[@]}"; do
+      class_count=${SDK_CLASS_MATCHES["$sdk"]:-0}
+      string_count=${SDK_STRING_MATCHES["$sdk"]:-0}
+      total=$((class_count + string_count))
+
+      if [[ $class_count -gt 0 ]]; then
+        confidence="HIGH"
+      elif [[ $string_count -gt 0 ]]; then
+        confidence="MEDIUM"
+      else
+        confidence="NONE"
+      fi
+
+      [[ "$confidence" == "NONE" ]] && continue
+
+      if [[ "$first" == true ]]; then
+        first=false
+      else
+        printf ',\n'
+      fi
+
+      sections="${SDK_SECTIONS_HIT["$sdk"]:-}"
+      printf '    {"sdk": "%s", "class_matches": %d, "string_matches": %d, "total_matches": %d, "confidence": "%s", "sections": "%s"}' \
+        "$sdk" "$class_count" "$string_count" "$total" "$confidence" "$sections"
+    done
+    printf '\n  ]\n}\n'
+  else
+    echo
+    echo "=== Ad SDK Detection Summary ==="
+    echo
+    printf "%-15s | %6s | %7s | %5s | %-10s | %s\n" "SDK" "Class" "String" "Total" "Confidence" "Status"
+    printf "%-15s-|-%6s-|-%7s-|-%5s-|-%-10s-|-%s\n" "---------------" "------" "-------" "-----" "----------" "--------"
+
+    for sdk in "${AD_SDKS[@]}"; do
+      class_count=${SDK_CLASS_MATCHES["$sdk"]:-0}
+      string_count=${SDK_STRING_MATCHES["$sdk"]:-0}
+      total=$((class_count + string_count))
+
+      if [[ $class_count -gt 0 ]]; then
+        confidence="HIGH"
+        status="DETECTED"
+      elif [[ $string_count -gt 0 ]]; then
+        confidence="MEDIUM"
+        status="LIKELY"
+      else
+        confidence="NONE"
+        status="NOT FOUND"
+      fi
+
+      printf "%-15s | %6d | %7d | %5d | %-10s | %s\n" \
+        "$sdk" "$class_count" "$string_count" "$total" "$confidence" "$status"
+    done
+
+    ep_count=${SDK_CLASS_MATCHES["EntryPoints"]:-0}
+    if [[ $ep_count -gt 0 ]]; then
+      echo
+      echo "Entry points in app code: $ep_count match(es)"
+    fi
+    mediation_count=${SDK_CLASS_MATCHES["Mediation"]:-0}
+    if [[ $mediation_count -gt 0 ]]; then
+      echo "Mediation adapters: $mediation_count match(es)"
+    fi
+    consent_count=${SDK_CLASS_MATCHES["Consent"]:-0}
+    if [[ $consent_count -gt 0 ]]; then
+      echo "Consent framework: $consent_count match(es)"
+    fi
+    echo
+    echo "Confidence: HIGH = SDK-specific classes found, MEDIUM = only generic/string matches, NONE = not detected"
+  fi
+else
+  echo
+  echo "=== Search complete ==="
+fi

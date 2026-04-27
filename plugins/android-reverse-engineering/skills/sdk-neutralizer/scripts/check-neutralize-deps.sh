@@ -128,6 +128,26 @@ else
   missing_optional+=("zip")
 fi
 
+# --- Python 3.6+ (optional, for registry-scan.py) ---
+if command -v python3 &>/dev/null; then
+  py_version=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null)
+  py_major=$(echo "$py_version" | cut -d. -f1)
+  py_minor=$(echo "$py_version" | cut -d. -f2)
+  if [[ "$py_major" -ge 3 ]] && [[ "$py_minor" -ge 6 ]]; then
+    echo "[OK] Python $py_version (for registry-scan.py — SDK registry scanning)"
+  else
+    echo "[WARN] Python $py_version found but 3.6+ required for registry-scan.py"
+    echo "       Without Python 3.6+, neutralize.sh falls back to builtin hardcoded targets."
+    echo "       Install: apt install python3 / brew install python3"
+    missing_optional+=("python3")
+  fi
+else
+  echo "[WARN] python3 not found (optional — required for registry-scan.py SDK registry scanning)"
+  echo "       Without python3, neutralize.sh falls back to builtin hardcoded targets."
+  echo "       Install: apt install python3 / brew install python3"
+  missing_optional+=("python3")
+fi
+
 # --- Machine-readable summary ---
 echo
 if [[ ${#missing_required[@]} -gt 0 ]]; then

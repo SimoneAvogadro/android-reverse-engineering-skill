@@ -21,7 +21,8 @@ A Claude Code Skill (plugin) for Android reverse engineering, API extraction, an
 - `plugins/android-reverse-engineering/skills/android-reverse-engineering/` — Core RE skill (5-phase workflow, references, scripts)
 - `plugins/android-reverse-engineering/skills/tracker-analysis/` — Tracker/analytics SDK detection skill (4-phase workflow, references, find-trackers.sh)
 - `plugins/android-reverse-engineering/skills/ad-analysis/` — Advertising SDK detection skill (3-phase workflow, references, find-ads.sh)
-- `plugins/android-reverse-engineering/skills/sdk-neutralizer/` — SDK neutralization skill (6-phase workflow, references, decode-apk.sh, neutralize.sh, merge-splits.sh, rebuild-apk.sh)
+- `plugins/android-reverse-engineering/skills/sdk-neutralizer/` — SDK neutralization skill (6-phase workflow, references, decode-apk.sh, neutralize.sh, registry-scan.py, merge-splits.sh, rebuild-apk.sh)
+- `plugins/android-reverse-engineering/skills/sdk-neutralizer/registry/` — SDK registry (29 JSON files defining neutralization targets, manifest components, protected patterns)
 
 ## Key Scripts
 
@@ -61,13 +62,20 @@ bash find-ads.sh <source-dir> [--admob|--unity|--ironsource|--applovin|--faceboo
 SDK neutralizer scripts under `plugins/android-reverse-engineering/skills/sdk-neutralizer/scripts/`:
 
 ```bash
-# Check neutralization dependencies (including apktool >= 2.9.0)
+# Check neutralization dependencies (including apktool >= 2.9.0, Python 3.6+ optional)
 bash check-neutralize-deps.sh
 
 # Decode APK or XAPK (for XAPK: decodes base APK, preserves splits in .xapk-origin/)
 bash decode-apk.sh <file.apk|file.xapk> [-o <decoded-dir>]
 
+# Scan decoded APK against SDK registry (generates targets-file + manifest-components-file)
+# Depth: 1=entry_points only, 2=+ad_operations, 3=+deep_patterns
+python3 registry-scan.py <decoded-dir> --registry <registry-path> --depth 1|2|3 --category ads|trackers|all --output-dir <decoded-dir>
+
 # Neutralize SDK entry points in decoded APK (dry-run first)
+# Registry-driven mode (preferred):
+bash neutralize.sh <decoded-dir> --no-builtin-targets --targets-file <decoded-dir>/registry-targets.txt --manifest-components-file <decoded-dir>/registry-manifest.txt [--dry-run] [--package <path>]
+# Fallback (builtin targets):
 bash neutralize.sh <decoded-dir> [--ads|--trackers|--all] [--dry-run] [--no-backup] [--no-manifest] [--targets-file <file>] [--replay] [--no-save-manifest]
 
 # Merge XAPK splits into decoded base for single APK output (optional, for XAPK input)
@@ -76,6 +84,13 @@ bash merge-splits.sh <decoded-dir> [--abi <abi>] [--all-abis] [--skip-resources]
 # Rebuild and sign neutralized APK (auto-reassembles XAPK if .xapk-origin/ exists, or single APK if merged)
 bash rebuild-apk.sh <decoded-dir> [--auto-keystore|--debug-key|--keystore <file>] [-o <output>] [--no-sign] [--no-res] [--zipalign] [--single-apk]
 ```
+
+SDK registry under `plugins/android-reverse-engineering/skills/sdk-neutralizer/registry/`:
+
+- 29 SDK JSON files + `_schema.json` schema definition
+- Covers: AdMob, Unity Ads, IronSource, AppLovin, Meta AN, Vungle, InMobi, Chartboost, Pangle, BidMachine, Smaato, PubNative, Ogury, Fyber, Amazon APS, Facebook, Firebase Analytics, Firebase Crashlytics, AppsFlyer, Adjust, Braze, CleverTap, Guru Fusion, Mintegral, Mixpanel, MobileFuse, Moloco, PubMatic, TradPlus
+- Each JSON defines: packages, entry_points, ad_operations, deep_patterns, manifest_components, protected_patterns
+- `registry-scan.py` consumes these JSONs to generate neutralization targets
 
 ## Architecture
 

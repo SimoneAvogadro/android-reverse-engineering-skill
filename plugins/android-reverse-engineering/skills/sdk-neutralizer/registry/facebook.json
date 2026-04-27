@@ -1,0 +1,147 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "facebook",
+  "display_name": "Facebook SDK",
+  "description": "Meta SDK — core, ads (Audience Network), login, share, gaming services",
+  "vendor": "Meta",
+  "category": "social",
+  "known_versions": ["17.0.2"],
+  "packages": [
+    "com.facebook",
+    "com.facebook.ads",
+    "com.facebook.login",
+    "com.facebook.share",
+    "com.facebook.appevents",
+    "com.facebook.gamingservices",
+    "com.facebook.bolts",
+    "com.facebook.internal",
+    "com.facebook.unity"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "readable"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "com.facebook.FacebookSdk",
+        "methods": [
+          { "name": "sdkInitialize", "signature": "*", "stub": "return-void", "note": "Main SDK init — all overloads" },
+          { "name": "fullyInitialize", "signature": "*", "stub": "return-void" },
+          { "name": "setApplicationId", "signature": "*", "stub": "return-void" },
+          { "name": "setClientToken", "signature": "*", "stub": "return-void" },
+          { "name": "setAutoLogAppEventsEnabled", "signature": "*", "stub": "return-void" },
+          { "name": "setAdvertiserIDCollectionEnabled", "signature": "*", "stub": "return-void" },
+          { "name": "setAutoInitEnabled", "signature": "*", "stub": "return-void" },
+          { "name": "setIsDebugEnabled", "signature": "*", "stub": "return-void" }
+        ]
+      },
+      {
+        "class": "com.facebook.ads.AudienceNetworkAds",
+        "methods": [
+          { "name": "initialize", "signature": "*", "stub": "return-void", "note": "Audience Network init" },
+          { "name": "buildInitSettings", "signature": "*", "stub": "return-null" }
+        ]
+      },
+      {
+        "class": "com.facebook.ads.internal.dynamicloading.DynamicLoaderFactory",
+        "methods": [
+          { "name": "initialize", "signature": "*", "stub": "return-void", "note": "Dynamic loader init" },
+          { "name": "getDynamicLoader", "signature": "*", "stub": "return-null" },
+          { "name": "makeLoaderUnsafe", "signature": "*", "stub": "return-null" },
+          { "name": "doCallInitialize", "signature": "*", "stub": "return-void" },
+          { "name": "setFallbackMode", "signature": "*", "stub": "return-void" },
+          { "name": "setUseLegacyClassLoader", "signature": "*", "stub": "return-void" }
+        ]
+      },
+      {
+        "class": "com.facebook.ads.internal.api.InitSettingsBuilder",
+        "methods": [
+          { "name": "initialize", "signature": "*", "stub": "return-void" }
+        ]
+      },
+      {
+        "class": "com.facebook.unity.FB",
+        "methods": [
+          { "name": "Init", "signature": "*", "stub": "return-void", "note": "Unity bridge init" }
+        ]
+      }
+    ],
+    "ad_operations": [
+      {
+        "class": "com.facebook.ads.internal.api.InterstitialAdApi",
+        "methods": [
+          { "name": "buildLoadAdConfig", "signature": "*", "stub": "return-null" },
+          { "name": "buildShowAdConfig", "signature": "*", "stub": "return-null" }
+        ]
+      },
+      {
+        "class": "com.facebook.ads.internal.api.RewardedInterstitialAdApi",
+        "methods": [
+          { "name": "buildLoadAdConfig", "signature": "*", "stub": "return-null" },
+          { "name": "buildShowAdConfig", "signature": "*", "stub": "return-null" }
+        ]
+      }
+    ],
+    "deep_patterns": [
+      {
+        "package_glob": "com.facebook.appevents.**",
+        "rule": "stub_all_void",
+        "note": "Event tracking — 670+ methods, all V1-proven safe"
+      },
+      {
+        "package_glob": "com.facebook.internal.**",
+        "rule": "stub_all_void",
+        "note": "Internal utilities — 460+ methods, V1-proven safe"
+      },
+      {
+        "package_glob": "com.facebook.login.**",
+        "rule": "stub_all_void",
+        "note": "Login flow — 392+ methods, safe if app does not use FB Login as feature"
+      },
+      {
+        "package_glob": "com.facebook.ads.internal.**",
+        "rule": "stub_all_void",
+        "note": "Ads internal — 313+ methods, V1-proven safe"
+      },
+      {
+        "package_glob": "com.facebook.share.**",
+        "rule": "stub_all_void",
+        "note": "Share API — 263+ methods, V1-proven safe"
+      },
+      {
+        "package_glob": "com.facebook.gamingservices.**",
+        "rule": "stub_all_void",
+        "note": "Gaming services — 181+ methods, V1-proven safe"
+      },
+      {
+        "package_glob": "com.facebook.bolts.**",
+        "rule": "stub_all_void",
+        "note": "Task framework — 66 methods, V1-proven safe"
+      },
+      {
+        "package_glob": "com.facebook.unity.**",
+        "rule": "stub_all_void",
+        "note": "FB Unity wrappers — 147+ methods, V1-proven safe"
+      }
+    ]
+  },
+  "manifest_components": [
+    {
+      "type": "provider",
+      "class": "com.facebook.internal.FacebookInitProvider",
+      "action": "disable",
+      "note": "Auto-init ContentProvider"
+    }
+  ],
+  "protected_patterns": [
+    {
+      "pattern": "*.getActivity()*",
+      "reason": "Returns Activity reference — null causes NPE"
+    },
+    {
+      "pattern": "*.getApplicationContext()*",
+      "reason": "Returns Context — null causes NPE"
+    }
+  ]
+}

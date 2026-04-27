@@ -26,10 +26,14 @@ Options:
   --manifest      Search only for AndroidManifest.xml markers
   --entrypoints   Search only for tracker SDK calls in app code (excludes library packages)
   --all           Search all patterns (default)
+  --summary       Output a compact summary table with confidence scoring
+  --json          Output results as machine-readable JSON
   -h, --help      Show this help message
 
 Output:
-  Results are printed as file:line:match for easy navigation.
+  Default: Results are printed as file:line:match for easy navigation.
+  --summary: Compact table with SDK | Sections | File Matches | Confidence | Status
+  --json: JSON object with per-SDK detection results and confidence scores
 EOF
   exit 0
 }
@@ -49,6 +53,8 @@ SEARCH_ENDPOINTS=false
 SEARCH_MANIFEST=false
 SEARCH_ENTRYPOINTS=false
 SEARCH_ALL=true
+OUTPUT_SUMMARY=false
+OUTPUT_JSON=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -66,6 +72,8 @@ while [[ $# -gt 0 ]]; do
     --manifest)     SEARCH_MANIFEST=true;     SEARCH_ALL=false; shift ;;
     --entrypoints)  SEARCH_ENTRYPOINTS=true;  SEARCH_ALL=false; shift ;;
     --all)          SEARCH_ALL=true; shift ;;
+    --summary)      OUTPUT_SUMMARY=true; shift ;;
+    --json)         OUTPUT_JSON=true; shift ;;
     -h|--help)    usage ;;
     -*)           echo "Error: Unknown option $1" >&2; usage ;;
     *)            SOURCE_DIR="$1"; shift ;;
@@ -84,22 +92,101 @@ fi
 
 GREP_OPTS="-rn --include=*.java --include=*.kt"
 
+# Summary/JSON mode: redirect output to temp file, count results per SDK
+if [[ "$OUTPUT_SUMMARY" == true ]] || [[ "$OUTPUT_JSON" == true ]]; then
+  SUMMARY_MODE=true
+  # Force --all for summary mode to get complete picture
+  SEARCH_ALL=true
+else
+  SUMMARY_MODE=false
+fi
+
+# Associative arrays for summary tracking (SDK -> match count, sections with hits)
+declare -A SDK_CLASS_MATCHES   # SDK-specific class/import matches (HIGH confidence)
+declare -A SDK_STRING_MATCHES  # SDK string/generic matches (MEDIUM confidence)
+declare -A SDK_SECTIONS_HIT    # comma-separated list of sections with hits
+
 section() {
-  echo
-  echo "==== $1 ===="
-  echo
+  if [[ "$SUMMARY_MODE" == true ]]; then
+    CURRENT_SECTION="$1"
+  else
+    echo
+    echo "==== $1 ===="
+    echo
+  fi
 }
 
 run_grep() {
   local pattern="$1"
   # shellcheck disable=SC2086
-  grep $GREP_OPTS -E "$pattern" "$SOURCE_DIR" 2>/dev/null || true
+  local result
+  result=$(grep $GREP_OPTS -E "$pattern" "$SOURCE_DIR" 2>/dev/null || true)
+  if [[ "$SUMMARY_MODE" == true ]]; then
+    if [[ -n "$result" ]]; then
+      local count
+      count=$(echo "$result" | wc -l)
+      # Determine which SDK this section belongs to and confidence level
+      _tally_section_result "$count"
+    fi
+  else
+    echo "$result"
+  fi
 }
 
 run_grep_xml() {
   local pattern="$1"
-  grep -rn --include="*.xml" -E "$pattern" "$SOURCE_DIR" 2>/dev/null || true
+  local result
+  result=$(grep -rn --include="*.xml" -E "$pattern" "$SOURCE_DIR" 2>/dev/null || true)
+  if [[ "$SUMMARY_MODE" == true ]]; then
+    if [[ -n "$result" ]]; then
+      local count
+      count=$(echo "$result" | wc -l)
+      _tally_section_result "$count"
+    fi
+  else
+    echo "$result"
+  fi
 }
+
+# Maps section name to SDK and tallies results
+_tally_section_result() {
+  local count="$1"
+  local sdk=""
+  local confidence="class"  # default to HIGH (class-level match)
+
+  case "$CURRENT_SECTION" in
+    "Firebase Analytics"*)          sdk="Firebase" ;;
+    "Adjust"*)                      sdk="Adjust" ;;
+    "AppsFlyer"*)                   sdk="AppsFlyer" ;;
+    "Mixpanel"*)                    sdk="Mixpanel" ;;
+    "Amplitude"*)                   sdk="Amplitude" ;;
+    "Segment"*)                     sdk="Segment" ;;
+    "Braze"*)                       sdk="Braze" ;;
+    "CleverTap"*)                   sdk="CleverTap" ;;
+    "Flurry"*)                      sdk="Flurry" ;;
+    "Generic"*)                     sdk="Generic"; confidence="string" ;;
+    "Known Tracker Endpoints"*)     sdk="Endpoints"; confidence="class" ;;
+    "AndroidManifest"*)             sdk="Manifest"; confidence="class" ;;
+    "Entry Points"*)                sdk="EntryPoints"; confidence="class" ;;
+    *)                              sdk="Other"; confidence="string" ;;
+  esac
+
+  if [[ "$confidence" == "class" ]]; then
+    SDK_CLASS_MATCHES["$sdk"]=$(( ${SDK_CLASS_MATCHES["$sdk"]:-0} + count ))
+  else
+    SDK_STRING_MATCHES["$sdk"]=$(( ${SDK_STRING_MATCHES["$sdk"]:-0} + count ))
+  fi
+
+  # Track which sections had hits
+  local existing="${SDK_SECTIONS_HIT["$sdk"]:-}"
+  if [[ -n "$existing" ]]; then
+    SDK_SECTIONS_HIT["$sdk"]="${existing}, ${CURRENT_SECTION}"
+  else
+    SDK_SECTIONS_HIT["$sdk"]="${CURRENT_SECTION}"
+  fi
+}
+
+CURRENT_SECTION=""
 
 # --- Firebase Analytics ---
 if [[ "$SEARCH_ALL" == true || "$SEARCH_FIREBASE" == true ]]; then
@@ -257,12 +344,103 @@ if [[ "$SEARCH_ALL" == true || "$SEARCH_ENTRYPOINTS" == true ]]; then
   ENTRYPOINT_PATTERN='(FirebaseAnalytics\.getInstance|FirebaseAnalytics\.newInstance|FirebaseApp\.initializeApp|\.logEvent\s*\(|\.setUserId\s*\(|\.setUserProperty\s*\(|\.setAnalyticsCollectionEnabled|Adjust\.onCreate|Adjust\.trackEvent|AdjustConfig\s*\(|AppsFlyerLib\.getInstance|\.init\s*\(.*AF_DEV_KEY|\.start\s*\(.*AppsFlyerLib|MixpanelAPI\.getInstance|\.track\s*\(.*MixpanelAPI|\.identify\s*\(.*Mixpanel|Amplitude\.getInstance|\.logEvent\s*\(.*Amplitude|Analytics\.with\s*\(|\.track\s*\(.*Segment|\.identify\s*\(.*Segment|Braze\.configure|\.logCustomEvent\s*\(|\.changeUser\s*\(.*Braze|CleverTapAPI\.getDefaultInstance|\.pushEvent\s*\(|\.onUserLogin\s*\(|FlurryAgent\.logEvent|FlurryAgent\.setUserId|FlurryAgent\.Builder)'
 
   # shellcheck disable=SC2086
-  grep -rn --include="*.java" --include="*.kt" "${EXCLUDE_DIRS[@]}" -E "$ENTRYPOINT_PATTERN" "$SOURCE_DIR" 2>/dev/null || true
-
-  echo
-  echo "NOTE: Only calls from app code are shown above. Library-internal calls are excluded."
-  echo "If no results appear, tracker SDKs may only be initialized internally (e.g., via ContentProvider)."
+  local ep_result
+  ep_result=$(grep -rn --include="*.java" --include="*.kt" "${EXCLUDE_DIRS[@]}" -E "$ENTRYPOINT_PATTERN" "$SOURCE_DIR" 2>/dev/null || true)
+  if [[ "$SUMMARY_MODE" == true ]]; then
+    if [[ -n "$ep_result" ]]; then
+      local count
+      count=$(echo "$ep_result" | wc -l)
+      _tally_section_result "$count"
+    fi
+  else
+    echo "$ep_result"
+    echo
+    echo "NOTE: Only calls from app code are shown above. Library-internal calls are excluded."
+    echo "If no results appear, tracker SDKs may only be initialized internally (e.g., via ContentProvider)."
+  fi
 fi
 
-echo
-echo "=== Search complete ==="
+# =====================================================================
+# Summary / JSON output
+# =====================================================================
+
+if [[ "$SUMMARY_MODE" == true ]]; then
+  # Known tracker SDKs to report on (exclude meta categories)
+  TRACKER_SDKS=("Firebase" "Adjust" "AppsFlyer" "Mixpanel" "Amplitude" "Segment" "Braze" "CleverTap" "Flurry")
+
+  if [[ "$OUTPUT_JSON" == true ]]; then
+    # JSON output
+    printf '{\n  "trackers": [\n'
+    first=true
+    for sdk in "${TRACKER_SDKS[@]}"; do
+      class_count=${SDK_CLASS_MATCHES["$sdk"]:-0}
+      string_count=${SDK_STRING_MATCHES["$sdk"]:-0}
+      total=$((class_count + string_count))
+
+      # Determine confidence
+      if [[ $class_count -gt 0 ]]; then
+        confidence="HIGH"
+      elif [[ $string_count -gt 0 ]]; then
+        confidence="MEDIUM"
+      else
+        confidence="NONE"
+      fi
+
+      [[ "$confidence" == "NONE" ]] && continue
+
+      if [[ "$first" == true ]]; then
+        first=false
+      else
+        printf ',\n'
+      fi
+
+      sections="${SDK_SECTIONS_HIT["$sdk"]:-}"
+      printf '    {"sdk": "%s", "class_matches": %d, "string_matches": %d, "total_matches": %d, "confidence": "%s", "sections": "%s"}' \
+        "$sdk" "$class_count" "$string_count" "$total" "$confidence" "$sections"
+    done
+    printf '\n  ]\n}\n'
+  else
+    # Summary table output
+    echo
+    echo "=== Tracker Detection Summary ==="
+    echo
+    printf "%-15s | %6s | %7s | %5s | %-10s | %s\n" "SDK" "Class" "String" "Total" "Confidence" "Status"
+    printf "%-15s-|-%6s-|-%7s-|-%5s-|-%-10s-|-%s\n" "---------------" "------" "-------" "-----" "----------" "--------"
+
+    for sdk in "${TRACKER_SDKS[@]}"; do
+      class_count=${SDK_CLASS_MATCHES["$sdk"]:-0}
+      string_count=${SDK_STRING_MATCHES["$sdk"]:-0}
+      total=$((class_count + string_count))
+
+      if [[ $class_count -gt 0 ]]; then
+        confidence="HIGH"
+        status="DETECTED"
+      elif [[ $string_count -gt 0 ]]; then
+        confidence="MEDIUM"
+        status="LIKELY"
+      else
+        confidence="NONE"
+        status="NOT FOUND"
+      fi
+
+      printf "%-15s | %6d | %7d | %5d | %-10s | %s\n" \
+        "$sdk" "$class_count" "$string_count" "$total" "$confidence" "$status"
+    done
+
+    # Additional info
+    ep_count=${SDK_CLASS_MATCHES["EntryPoints"]:-0}
+    if [[ $ep_count -gt 0 ]]; then
+      echo
+      echo "Entry points in app code: $ep_count match(es)"
+    fi
+    manifest_count=${SDK_CLASS_MATCHES["Manifest"]:-0}
+    if [[ $manifest_count -gt 0 ]]; then
+      echo "Manifest markers: $manifest_count match(es)"
+    fi
+    echo
+    echo "Confidence: HIGH = SDK-specific classes found, MEDIUM = only generic/string matches, NONE = not detected"
+  fi
+else
+  echo
+  echo "=== Search complete ==="
+fi

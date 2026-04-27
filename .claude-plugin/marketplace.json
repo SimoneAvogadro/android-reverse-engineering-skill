@@ -7,14 +7,14 @@
   },
   "metadata": {
     "description": "Claude Code plugins for Android reverse engineering, tracker detection, ad SDK analysis, and SDK neutralization for enterprise deployment",
-    "version": "1.2.0"
+    "version": "1.3.1"
   },
   "plugins": [
     {
       "name": "android-reverse-engineering",
       "source": "./plugins/android-reverse-engineering",
       "description": "Decompile Android APK/JAR/AAR with jadx, trace call flows, extract APIs, analyze tracker/ad SDKs for privacy auditing, and neutralize SDK entry points for enterprise deployment.",
-      "version": "1.2.0",
+      "version": "1.3.1",
       "author": {
         "name": "Simone Avogadro"
       },

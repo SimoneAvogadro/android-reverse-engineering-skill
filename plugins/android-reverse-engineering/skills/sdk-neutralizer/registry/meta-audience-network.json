@@ -1,0 +1,89 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "meta-audience-network",
+  "display_name": "Meta Audience Network",
+  "description": "Meta Audience Network (Facebook Ads) — ad-specific subset. Full SDK coverage in facebook.json.",
+  "vendor": "Meta",
+  "category": "ads",
+  "known_versions": ["6.20.0"],
+  "packages": [
+    "com.facebook.ads"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "readable"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "com.facebook.ads.AudienceNetworkAds",
+        "methods": [
+          { "name": "initialize", "signature": "*", "stub": "return-void", "note": "Audience Network init" },
+          { "name": "isInitialized", "signature": "*", "stub": "return-false/0" }
+        ]
+      }
+    ],
+    "ad_operations": [
+      {
+        "class": "com.facebook.ads.InterstitialAd",
+        "methods": [
+          { "name": "loadAd", "signature": "*", "stub": "return-void" },
+          { "name": "show", "signature": "*", "stub": "return-void" },
+          { "name": "isAdLoaded", "signature": "*", "stub": "return-false/0" },
+          { "name": "destroy", "signature": "*", "stub": "return-void" }
+        ]
+      },
+      {
+        "class": "com.facebook.ads.RewardedVideoAd",
+        "methods": [
+          { "name": "loadAd", "signature": "*", "stub": "return-void" },
+          { "name": "show", "signature": "*", "stub": "return-void" },
+          { "name": "isAdLoaded", "signature": "*", "stub": "return-false/0" },
+          { "name": "destroy", "signature": "*", "stub": "return-void" }
+        ]
+      },
+      {
+        "class": "com.facebook.ads.AdView",
+        "methods": [
+          { "name": "loadAd", "signature": "*", "stub": "return-void" },
+          { "name": "destroy", "signature": "*", "stub": "return-void" }
+        ]
+      },
+      {
+        "class": "com.facebook.ads.NativeAd",
+        "methods": [
+          { "name": "loadAd", "signature": "*", "stub": "return-void" },
+          { "name": "destroy", "signature": "*", "stub": "return-void" }
+        ]
+      }
+    ],
+    "deep_patterns": [
+      {
+        "package_glob": "com.facebook.ads.internal.**",
+        "rule": "stub_all_void",
+        "note": "Ads internals — 313+ methods, V1-proven safe"
+      }
+    ]
+  },
+  "manifest_components": [
+    {
+      "type": "activity",
+      "class": "com.facebook.ads.AudienceNetworkActivity",
+      "action": "disable",
+      "note": "Audience Network ad activity"
+    },
+    {
+      "type": "activity",
+      "class": "com.facebook.ads.InterstitialAdActivity",
+      "action": "disable",
+      "note": "Interstitial ad display activity"
+    },
+    {
+      "type": "provider",
+      "class": "com.facebook.ads.AudienceNetworkContentProvider",
+      "action": "disable",
+      "note": "Audience Network content provider"
+    }
+  ],
+  "protected_patterns": []
+}

@@ -76,35 +76,104 @@ Verify the decoded directory contains `smali/` and `AndroidManifest.xml` (the sc
 
 If the output includes `XAPK_ORIGIN:<path>`, inform the user: "This is an XAPK (split APK bundle). The base APK has been decoded for neutralization, and all split APKs are preserved. During rebuild, all APKs (base + splits) will be re-signed with the same key and reassembled into a new XAPK."
 
-### Step 5: Identify targets
+### Step 5: Identify targets — Registry Scan
 
-Run entry point detection to find which SDK calls exist in the app code:
+The decoded directory contains smali bytecode. Use `registry-scan.py` to match against the SDK registry (29 SDKs, 123 entry points, 156 ad operations).
+
+**5a. Run registry scan:**
 
 ```bash
-bash ${CLAUDE_PLUGIN_ROOT}/skills/ad-analysis/scripts/find-ads.sh "${DECODED_DIR}" --entrypoints
-bash ${CLAUDE_PLUGIN_ROOT}/skills/tracker-analysis/scripts/find-trackers.sh "${DECODED_DIR}" --entrypoints
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/registry-scan.py "${DECODED_DIR}" \
+  --registry "${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/registry/" \
+  --depth 1 --category all \
+  --output-dir "${DECODED_DIR}"
 ```
 
-Present the results and ask the user what to neutralize:
-- **Ads only** (`--ads`)
-- **Trackers only** (`--trackers`)
-- **Both** (`--all`, recommended)
+Parse stdout:
+- `MATCHED:` lines — present as a table (SDK name, category, target count)
+- `UNKNOWN_PACKAGE:` lines — candidates for Step 5c
+- `REGISTRY_TARGETS:` / `REGISTRY_MANIFEST:` — paths to generated files
 
-### Step 6: Dry-run preview
+**Depth levels**: Ask the user which depth to use:
+- **Depth 1** (default, safest): only SDK init/start methods
+- **Depth 2**: + ad load/show/cache methods
+- **Depth 3**: + bulk-stub internal packages (aggressive, version-dependent)
 
-Always run a dry-run first so the user can review what will be patched:
+If the user requests depth 2 or 3, re-run with `--depth 2` or `--depth 3`.
 
+**Fallback** (if Python 3 not available): use builtin hardcoded detection:
 ```bash
 bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/neutralize.sh "${DECODED_DIR}" --all --dry-run
 ```
 
-Show the user the list of methods that would be patched and manifest components that would be disabled. Ask for explicit confirmation before proceeding. Remind the user about possible side effects for any SDK where the stub could cause breakage (especially `getInstance()` returning null).
+**5b. Identify wrapper frameworks:**
+
+Search for non-SDK packages that invoke known SDK methods — these are wrapper/bridge classes. Use Grep (auto-approved) to find invocations from app code:
+
+```
+Grep: pattern="invoke-.*Lcom/google/android/gms/ads|invoke-.*Lcom/unity3d/ads|invoke-.*Lcom/ironsource|invoke-.*Lcom/applovin"
+      path=<decoded-dir>/smali*/
+```
+
+Filter to non-SDK packages to identify wrappers. If found, add as `--package` targets.
+
+**5c. Unknown SDK discovery (if registry reported UNKNOWN_PACKAGE candidates):**
+
+For significant unknown packages (10+ classes, proper naming), use Claude Code built-in tools:
+
+1. **Glob** to list main classes in the package
+2. **Grep** for SDK patterns: `\.method.*(init|initialize|start|load|show)`, `const-string.*http`
+3. **Read** key classes to understand the API
+4. Classify: ads SDK, tracker, utility, or app code
+
+Present unknown candidates as a table. If the user wants deep analysis:
+
+**5d. Deep analysis (opt-in, requires user confirmation):**
+
+Ask: "I found N unknown SDK candidates. Want me to research them via web search?"
+
+For each confirmed candidate:
+1. Web search for the package name
+2. Read main smali classes for public API
+3. Propose treatment and generate custom targets
+
+**5e. Compile and confirm:**
+
+Present the complete target summary (registry + custom + wrappers) and ask for confirmation:
+- `--ads` / `--trackers` / `--all`
+- Which SDKs to include/exclude
+
+### Step 6: Dry-run preview
+
+Always run a dry-run first. Use registry-driven mode when available:
+
+```bash
+# Registry-driven mode (preferred)
+bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/neutralize.sh "${DECODED_DIR}" \
+  --no-builtin-targets --dry-run \
+  --targets-file "${DECODED_DIR}/registry-targets.txt" \
+  --manifest-components-file "${DECODED_DIR}/registry-manifest.txt"
+
+# Fallback (no Python)
+bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/neutralize.sh "${DECODED_DIR}" --all --dry-run
+```
+
+If wrapper packages were found, add `--package` flags. If custom targets were generated, append them to the targets file first.
+
+Show the user what will be patched. Ask for explicit confirmation. Remind about side effects.
 
 ### Step 7: Neutralize
 
 Apply the neutralization:
 
 ```bash
+# Registry-driven mode (preferred)
+bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/neutralize.sh "${DECODED_DIR}" \
+  --no-builtin-targets \
+  --targets-file "${DECODED_DIR}/registry-targets.txt" \
+  --manifest-components-file "${DECODED_DIR}/registry-manifest.txt"
+
+# Fallback (no Python)
 bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/neutralize.sh "${DECODED_DIR}" --all
 ```
 
@@ -112,7 +181,20 @@ Parse the `PATCHED:` and `MANIFEST_DISABLED:` output lines for the report.
 
 ### Step 8: Rebuild & sign
 
-**Before rebuilding**, ask the user their signing preference:
+**If the input was an XAPK**, ask the user how they want the output:
+
+> The original input was an XAPK (split APK bundle). How would you like to rebuild?
+>
+> 1. **Merged single APK** (recommended for sideloading) — merges split contents into one APK, installable with standard `adb install`. May be missing some locale/density resources.
+> 2. **XAPK bundle** (preserves original structure) — requires `adb install-multiple` to install. All splits preserved exactly.
+
+If the user chooses option 1, run `merge-splits.sh` before rebuilding:
+
+```bash
+bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/merge-splits.sh "${DECODED_DIR}"
+```
+
+**Then ask the user their signing preference**:
 
 > How would you like to sign the rebuilt APK?
 >
@@ -136,10 +218,11 @@ bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/rebuild-apk.sh "${DECO
 Parse the output for:
 - `KEYSTORE_USED:<path>` — which keystore was used
 - `KEYSTORE_SOURCE:<source>` — how it was resolved (debug-standard, debug-previous, debug-generated, custom)
+- `KEYSTORE_ALIAS:<alias>` — the key alias used for signing
 - `SPLIT_SIGNED:<filename>` — each re-signed split APK (XAPK only)
 - `XAPK_ASSEMBLED:<path>` — final XAPK output (XAPK only)
 
-For XAPK output: inform the user that install requires `adb install-multiple` or a split APK installer (SAI).
+For XAPK output: inform the user that install requires `adb install-multiple` (unzip the XAPK first, then `adb install-multiple *.apk`).
 
 ### Step 9: Report & next steps
 
@@ -151,7 +234,7 @@ Include in the report:
 - **Install command**: `adb install <path>` for APK, `adb install-multiple <base.apk> <splits...>` for XAPK
 
 Tell the user what they can do next:
-- **Test thoroughly**: for APK: "Install via `adb install <apk>`"; for XAPK: "Install via `adb install-multiple` or use SAI (Split APKs Installer)" — test for crashes, especially features tied to ads or analytics
+- **Test thoroughly**: for APK: "Install via `adb install <apk>`"; for XAPK: "Unzip the XAPK, then install via `adb install-multiple *.apk`" — test for crashes, especially features tied to ads or analytics
 - **Verify**: "I can re-run entry point detection on the rebuilt APK to confirm neutralization"
 - **Custom targets**: "If the app uses obfuscated SDK calls, provide a targets file for additional patching"
 - **Deep analysis**: "Run `/find-trackers` or `/find-ads` for full SDK analysis"

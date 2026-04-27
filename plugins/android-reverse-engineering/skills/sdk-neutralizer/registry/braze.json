@@ -1,0 +1,54 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "braze",
+  "display_name": "Braze",
+  "description": "Braze (formerly Appboy) customer engagement SDK",
+  "vendor": "Braze",
+  "category": "analytics",
+  "known_versions": [],
+  "packages": [
+    "com.braze",
+    "com.appboy"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "readable"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "com.braze.Braze",
+        "methods": [
+          { "name": "configure", "signature": "*", "stub": "return-void", "note": "SDK configuration" },
+          { "name": "logCustomEvent", "signature": "*", "stub": "return-void" },
+          { "name": "changeUser", "signature": "*", "stub": "return-void" },
+          { "name": "logPurchase", "signature": "*", "stub": "return-void" }
+        ]
+      },
+      {
+        "class": "com.appboy.Appboy",
+        "methods": [
+          { "name": "configure", "signature": "*", "stub": "return-void", "note": "Legacy Appboy init" },
+          { "name": "logCustomEvent", "signature": "*", "stub": "return-void" },
+          { "name": "changeUser", "signature": "*", "stub": "return-void" }
+        ]
+      }
+    ],
+    "ad_operations": [],
+    "deep_patterns": []
+  },
+  "manifest_components": [
+    {
+      "type": "service",
+      "class": "com.braze.push.BrazeFirebaseMessagingService",
+      "action": "disable",
+      "note": "Firebase messaging service for push notifications"
+    }
+  ],
+  "protected_patterns": [
+    {
+      "pattern": "*.getInstance()*",
+      "reason": "Singleton accessor — null causes NPE if called by app code"
+    }
+  ]
+}

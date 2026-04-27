@@ -1,0 +1,72 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "pubmatic",
+  "display_name": "PubMatic OpenWrap",
+  "description": "PubMatic OpenWrap SDK for programmatic advertising",
+  "vendor": "PubMatic",
+  "category": "ads",
+  "known_versions": [],
+  "packages": [
+    "com.pubmatic.sdk"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "obfuscated"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "com.pubmatic.sdk.openwrap.core.POBBid",
+        "methods": [
+          { "name": "invalidate", "signature": "*", "stub": "return-void", "note": "Invalidate bid" }
+        ]
+      }
+    ],
+    "ad_operations": [
+      {
+        "class": "com.pubmatic.sdk.rewardedad.POBRewardedAd",
+        "methods": [
+          { "name": "loadAd", "signature": "*", "stub": "return-void" },
+          { "name": "show", "signature": "*", "stub": "return-void" },
+          { "name": "isReady", "signature": "*", "stub": "return-false/0" },
+          { "name": "destroy", "signature": "*", "stub": "return-void" }
+        ]
+      },
+      {
+        "class": "com.pubmatic.sdk.nativead.POBNativeAdView",
+        "methods": [
+          { "name": "loadAd", "signature": "*", "stub": "return-void" },
+          { "name": "destroy", "signature": "*", "stub": "return-void" }
+        ]
+      }
+    ],
+    "deep_patterns": [
+      {
+        "package_glob": "com.pubmatic.sdk.openwrap.**",
+        "rule": "stub_all_void",
+        "note": "OpenWrap core engine internals"
+      }
+    ]
+  },
+  "manifest_components": [
+    {
+      "type": "activity",
+      "class": "com.pubmatic.sdk.webrendering.mraid.POBVideoPlayerActivity",
+      "action": "disable",
+      "note": "Video player activity"
+    },
+    {
+      "type": "activity",
+      "class": "com.pubmatic.sdk.webrendering.ui.POBFullScreenActivity",
+      "action": "disable",
+      "note": "Fullscreen ad activity"
+    },
+    {
+      "type": "activity",
+      "class": "com.pubmatic.sdk.common.browser.POBInternalBrowserActivity",
+      "action": "disable",
+      "note": "Internal browser activity"
+    }
+  ],
+  "protected_patterns": []
+}

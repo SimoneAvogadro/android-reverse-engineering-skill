@@ -1,0 +1,67 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "vungle",
+  "display_name": "Vungle / Liftoff",
+  "description": "Vungle (Liftoff) ad SDK",
+  "vendor": "Liftoff",
+  "category": "ads",
+  "known_versions": [],
+  "packages": [
+    "com.vungle.ads"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "obfuscated"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "com.vungle.ads.VungleAds",
+        "methods": [
+          { "name": "init", "signature": "*", "stub": "return-void", "note": "Main SDK init" }
+        ]
+      }
+    ],
+    "ad_operations": [
+      {
+        "class": "com.vungle.ads.InterstitialAd",
+        "methods": [
+          { "name": "load", "signature": "*", "stub": "return-void" },
+          { "name": "play", "signature": "*", "stub": "return-void" },
+          { "name": "canPlayAd", "signature": "*", "stub": "return-false/0" }
+        ]
+      },
+      {
+        "class": "com.vungle.ads.RewardedAd",
+        "methods": [
+          { "name": "load", "signature": "*", "stub": "return-void" },
+          { "name": "play", "signature": "*", "stub": "return-void" },
+          { "name": "canPlayAd", "signature": "*", "stub": "return-false/0" }
+        ]
+      },
+      {
+        "class": "com.vungle.ads.BannerAd",
+        "methods": [
+          { "name": "load", "signature": "*", "stub": "return-void" },
+          { "name": "destroy", "signature": "*", "stub": "return-void" }
+        ]
+      }
+    ],
+    "deep_patterns": []
+  },
+  "manifest_components": [
+    {
+      "type": "activity",
+      "class": "com.vungle.warren.ui.VungleActivity",
+      "action": "disable",
+      "note": "Legacy Vungle (warren) ad activity"
+    },
+    {
+      "type": "activity",
+      "class": "com.vungle.ads.internal.ui.VungleActivity",
+      "action": "disable",
+      "note": "New Vungle ads activity"
+    }
+  ],
+  "protected_patterns": []
+}

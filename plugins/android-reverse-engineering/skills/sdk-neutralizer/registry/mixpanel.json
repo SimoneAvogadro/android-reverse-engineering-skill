@@ -1,0 +1,51 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "mixpanel",
+  "display_name": "Mixpanel",
+  "description": "Mixpanel analytics SDK for mobile",
+  "vendor": "Mixpanel",
+  "category": "analytics",
+  "known_versions": [],
+  "packages": [
+    "com.mixpanel.android"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "readable"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "com.mixpanel.android.mpmetrics.MixpanelAPI",
+        "methods": [
+          { "name": "track", "signature": "*", "stub": "return-void", "note": "Track event" },
+          { "name": "trackMap", "signature": "*", "stub": "return-void" },
+          { "name": "identify", "signature": "*", "stub": "return-void" },
+          { "name": "timeEvent", "signature": "*", "stub": "return-void" },
+          { "name": "registerSuperProperties", "signature": "*", "stub": "return-void" },
+          { "name": "flush", "signature": "*", "stub": "return-void" },
+          { "name": "alias", "signature": "*", "stub": "return-void" },
+          { "name": "reset", "signature": "*", "stub": "return-void" },
+          { "name": "optOutTracking", "signature": "*", "stub": "return-void" },
+          { "name": "optInTracking", "signature": "*", "stub": "return-void" }
+        ]
+      }
+    ],
+    "ad_operations": [],
+    "deep_patterns": []
+  },
+  "manifest_components": [
+    {
+      "type": "service",
+      "class": "com.mixpanel.android.mpmetrics.MixpanelFCMMessagingService",
+      "action": "disable",
+      "note": "FCM push notification service"
+    }
+  ],
+  "protected_patterns": [
+    {
+      "pattern": "*.getInstance()*",
+      "reason": "Singleton accessor — null causes NPE if called by app code"
+    }
+  ]
+}

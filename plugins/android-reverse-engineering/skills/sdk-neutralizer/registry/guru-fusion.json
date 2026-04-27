@@ -1,0 +1,111 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "guru-fusion",
+  "display_name": "Guru Fusion Ads",
+  "description": "Guru Fusion Ads SDK — ad mediation wrapper for AdMob, IronSource, AppLovin MAX",
+  "vendor": "Guru",
+  "category": "ads_mediation",
+  "known_versions": [],
+  "packages": [
+    "guru.ads.fusion"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "readable"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "guru.ads.fusion.core.GuruAdsSdk",
+        "methods": [
+          { "name": "initialize", "signature": "*", "stub": "return-void", "note": "Main SDK init with callback" }
+        ]
+      },
+      {
+        "class": "guru.ads.fusion.admob.GuruAdMobAdsSdk",
+        "methods": [
+          { "name": "initialize", "signature": "*", "stub": "return-void", "note": "AdMob backend init" }
+        ]
+      },
+      {
+        "class": "guru.ads.fusion.ironsource.GuruIronSourceAdsSdk",
+        "methods": [
+          { "name": "initialize", "signature": "*", "stub": "return-void", "note": "IronSource backend init" }
+        ]
+      },
+      {
+        "class": "guru.ads.fusion.max.GuruMaxAdsSdk",
+        "methods": [
+          { "name": "initialize", "signature": "*", "stub": "return-void", "note": "AppLovin MAX backend init" }
+        ]
+      }
+    ],
+    "ad_operations": [
+      {
+        "class": "guru.ads.fusion.admob.GuruAdMobInterstitialAd",
+        "methods": [
+          { "name": "load", "signature": "*", "stub": "return-void" },
+          { "name": "show", "signature": "*", "stub": "return-void" }
+        ]
+      },
+      {
+        "class": "guru.ads.fusion.admob.GuruAdMobRewardedAd",
+        "methods": [
+          { "name": "load", "signature": "*", "stub": "return-void" },
+          { "name": "show", "signature": "*", "stub": "return-void" }
+        ]
+      },
+      {
+        "class": "guru.ads.fusion.admob.GuruAdMobBannerAd",
+        "methods": [
+          { "name": "load", "signature": "*", "stub": "return-void" },
+          { "name": "destroy", "signature": "*", "stub": "return-void" }
+        ]
+      },
+      {
+        "class": "guru.ads.fusion.ironsource.GuruIronSourceInterstitialAd",
+        "methods": [
+          { "name": "load", "signature": "*", "stub": "return-void" },
+          { "name": "show", "signature": "*", "stub": "return-void" }
+        ]
+      },
+      {
+        "class": "guru.ads.fusion.ironsource.GuruIronSourceRewardedAd",
+        "methods": [
+          { "name": "load", "signature": "*", "stub": "return-void" },
+          { "name": "show", "signature": "*", "stub": "return-void" }
+        ]
+      },
+      {
+        "class": "guru.ads.fusion.max.GuruMaxInterstitialAd",
+        "methods": [
+          { "name": "load", "signature": "*", "stub": "return-void" },
+          { "name": "show", "signature": "*", "stub": "return-void" }
+        ]
+      },
+      {
+        "class": "guru.ads.fusion.max.GuruMaxRewardedAd",
+        "methods": [
+          { "name": "load", "signature": "*", "stub": "return-void" },
+          { "name": "show", "signature": "*", "stub": "return-void" }
+        ]
+      },
+      {
+        "class": "guru.ads.fusion.max.GuruMaxBannerAd",
+        "methods": [
+          { "name": "load", "signature": "*", "stub": "return-void" },
+          { "name": "destroy", "signature": "*", "stub": "return-void" }
+        ]
+      }
+    ],
+    "deep_patterns": [
+      {
+        "package_glob": "guru.ads.fusion.engine.**",
+        "rule": "stub_all_void",
+        "note": "Ad engine internals"
+      }
+    ]
+  },
+  "manifest_components": [],
+  "protected_patterns": []
+}

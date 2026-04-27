@@ -1,0 +1,99 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "mobilefuse",
+  "display_name": "MobileFuse",
+  "description": "MobileFuse ad SDK",
+  "vendor": "MobileFuse",
+  "category": "ads",
+  "known_versions": [],
+  "packages": [
+    "com.mobilefuse.sdk"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "obfuscated"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "com.mobilefuse.sdk.MobileFuse",
+        "methods": [
+          { "name": "init", "signature": "*", "stub": "return-void", "note": "Main SDK init — all overloads" },
+          { "name": "initSdkServices", "signature": "*", "stub": "return-void" }
+        ]
+      }
+    ],
+    "ad_operations": [
+      {
+        "class": "com.mobilefuse.sdk.MobileFuseInterstitialAd",
+        "methods": [
+          { "name": "loadAd", "signature": "*", "stub": "return-void" },
+          { "name": "showAd", "signature": "*", "stub": "return-void" },
+          { "name": "isLoaded", "signature": "*", "stub": "return-false/0" }
+        ]
+      },
+      {
+        "class": "com.mobilefuse.sdk.MobileFuseRewardedAd",
+        "methods": [
+          { "name": "loadAd", "signature": "*", "stub": "return-void" },
+          { "name": "showAd", "signature": "*", "stub": "return-void" },
+          { "name": "isLoaded", "signature": "*", "stub": "return-false/0" }
+        ]
+      },
+      {
+        "class": "com.mobilefuse.sdk.MobileFuseBannerAd",
+        "methods": [
+          { "name": "loadAd", "signature": "*", "stub": "return-void" },
+          { "name": "destroy", "signature": "*", "stub": "return-void" }
+        ]
+      },
+      {
+        "class": "com.mobilefuse.sdk.MobileFuseNativeAd",
+        "methods": [
+          { "name": "loadAd", "signature": "*", "stub": "return-void" },
+          { "name": "destroy", "signature": "*", "stub": "return-void" }
+        ]
+      }
+    ],
+    "deep_patterns": [
+      {
+        "package_glob": "com.mobilefuse.sdk.internal.**",
+        "rule": "stub_all_void",
+        "note": "Internal SDK classes"
+      }
+    ]
+  },
+  "manifest_components": [
+    {
+      "type": "provider",
+      "class": "com.mobilefuse.sdk.MobileFuseSdkInitProvider",
+      "action": "disable",
+      "note": "Auto-init ContentProvider"
+    },
+    {
+      "type": "activity",
+      "class": "com.mobilefuse.sdk.MobileFuseFullscreenActivity",
+      "action": "disable",
+      "note": "Fullscreen ad activity"
+    },
+    {
+      "type": "activity",
+      "class": "com.mobilefuse.sdk.MobileFuseFullscreenTransparentActivity",
+      "action": "disable",
+      "note": "Transparent fullscreen ad overlay"
+    },
+    {
+      "type": "activity",
+      "class": "com.mobilefuse.sdk.experimental.NativeInterstitialActivity",
+      "action": "disable",
+      "note": "Native interstitial activity"
+    },
+    {
+      "type": "activity",
+      "class": "com.mobilefuse.sdk.ad.rendering.splashad.MobileFuseSplashAdActivity",
+      "action": "disable",
+      "note": "Splash ad activity"
+    }
+  ],
+  "protected_patterns": []
+}

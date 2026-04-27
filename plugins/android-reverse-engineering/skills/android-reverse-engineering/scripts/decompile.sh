@@ -21,6 +21,9 @@ Options:
   --deobf           Enable deobfuscation of names
   --no-res          Skip resource decoding (faster, code-only)
   --engine ENGINE   Decompiler engine: jadx, fernflower, or both (default: jadx)
+  --timeout SECS    Global timeout in seconds (default: 600). 0 = no timeout.
+  --threads N       Number of decompiler threads (passed as -j N to jadx)
+  --heap SIZE       JVM heap size (e.g., 4g, 8g). Default: auto-sized by input file size.
   -h, --help        Show this help message
 
 Engines:
@@ -49,6 +52,9 @@ DEOBF=false
 NO_RES=false
 ENGINE="jadx"
 INPUT_FILE=""
+TIMEOUT=600
+THREADS=""
+HEAP_SIZE=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -56,6 +62,9 @@ while [[ $# -gt 0 ]]; do
     --deobf)       DEOBF=true; shift ;;
     --no-res)      NO_RES=true; shift ;;
     --engine)      ENGINE="$2"; shift 2 ;;
+    --timeout)     TIMEOUT="$2"; shift 2 ;;
+    --threads)     THREADS="$2"; shift 2 ;;
+    --heap)        HEAP_SIZE="$2"; shift 2 ;;
     -h|--help)     usage ;;
     -*)            echo "Error: Unknown option $1" >&2; usage ;;
     *)             INPUT_FILE="$1"; shift ;;
@@ -98,6 +107,25 @@ if [[ -z "$OUTPUT_DIR" ]]; then
   OUTPUT_DIR="${BASENAME}-decompiled"
 fi
 
+# --- Auto-size JVM heap based on input file size ---
+if [[ -z "$HEAP_SIZE" ]]; then
+  file_size_bytes=$(stat -c%s "$INPUT_FILE_ABS" 2>/dev/null || stat -f%z "$INPUT_FILE_ABS" 2>/dev/null || echo 0)
+  file_size_mb=$((file_size_bytes / 1048576))
+  if [[ "$file_size_mb" -gt 100 ]]; then
+    HEAP_SIZE="6g"
+  elif [[ "$file_size_mb" -gt 30 ]]; then
+    HEAP_SIZE="4g"
+  else
+    HEAP_SIZE="2g"
+  fi
+  echo "Auto-sized JVM heap: -Xmx${HEAP_SIZE} (input: ${file_size_mb}MB)"
+fi
+
+# Export JVM heap for jadx and fernflower
+export JAVA_OPTS="-Xmx${HEAP_SIZE}"
+# jadx also reads JADX_OPTS
+export JADX_OPTS="-Xmx${HEAP_SIZE}"
+
 # --- XAPK handling ---
 # XAPK is a ZIP containing one or more APKs, optional OBB files, and a manifest.json.
 # We extract it, find all APKs inside, and decompile each one.
@@ -106,6 +134,7 @@ XAPK_APK_FILES=()
 
 if [[ "$ext_lower" == "xapk" ]]; then
   XAPK_EXTRACTED_DIR=$(mktemp -d "${TMPDIR:-/tmp}/xapk-extract-XXXXXX")
+  trap 'rm -rf "$XAPK_EXTRACTED_DIR"' EXIT
   echo "=== Extracting XAPK archive ==="
   unzip -qo "$INPUT_FILE_ABS" -d "$XAPK_EXTRACTED_DIR"
 
@@ -179,10 +208,22 @@ run_jadx() {
   [[ "$DEOBF" == true ]] && args+=("--deobf")
   [[ "$NO_RES" == true ]] && args+=("--no-res")
   args+=("--show-bad-code")
+  [[ -n "$THREADS" ]] && args+=("-j" "$THREADS")
   args+=("$INPUT_FILE_ABS")
 
   echo "Running: jadx ${args[*]}"
-  jadx "${args[@]}"
+  if [[ "$TIMEOUT" -gt 0 ]] 2>/dev/null; then
+    if ! timeout "${TIMEOUT}s" jadx "${args[@]}"; then
+      local exit_code=$?
+      if [[ $exit_code -eq 124 ]]; then
+        echo "WARNING: jadx timed out after ${TIMEOUT}s. Partial output may be available." >&2
+      else
+        return $exit_code
+      fi
+    fi
+  else
+    jadx "${args[@]}"
+  fi
 
   echo "jadx output: $out_dir/sources/"
   if [[ -d "$out_dir/sources" ]]; then
@@ -237,8 +278,19 @@ run_fernflower() {
   ff_args+=("$jar_to_decompile")
   ff_args+=("$out_dir")
 
-  echo "Running: java -jar $ff_jar ${ff_args[*]}"
-  java -jar "$ff_jar" "${ff_args[@]}"
+  echo "Running: java -Xmx${HEAP_SIZE} -jar $ff_jar ${ff_args[*]}"
+  if [[ "$TIMEOUT" -gt 0 ]] 2>/dev/null; then
+    if ! timeout "${TIMEOUT}s" java "-Xmx${HEAP_SIZE}" -jar "$ff_jar" "${ff_args[@]}"; then
+      local exit_code=$?
+      if [[ $exit_code -eq 124 ]]; then
+        echo "WARNING: Fernflower timed out after ${TIMEOUT}s. Partial output may be available." >&2
+      else
+        return $exit_code
+      fi
+    fi
+  else
+    java "-Xmx${HEAP_SIZE}" -jar "$ff_jar" "${ff_args[@]}"
+  fi
 
   # Fernflower outputs a JAR containing .java files — extract it
   local result_jar="$out_dir/$(basename "$jar_to_decompile")"
@@ -363,11 +415,14 @@ if [[ "$ext_lower" == "xapk" ]]; then
     apk_name=$(basename "$apk_file" .apk)
     echo
     echo "======================================================"
-    decompile_single "$apk_file" "$OUTPUT_DIR/$apk_name" "$apk_name.apk"
+    if ! decompile_single "$apk_file" "$OUTPUT_DIR/$apk_name" "$apk_name.apk"; then
+      echo "WARNING: Failed to decompile $apk_name.apk, continuing with remaining APKs..." >&2
+    fi
   done
 
   # Cleanup extracted XAPK
   rm -rf "$XAPK_EXTRACTED_DIR"
+  trap - EXIT
 
   echo
   echo "=== XAPK decompilation complete ==="

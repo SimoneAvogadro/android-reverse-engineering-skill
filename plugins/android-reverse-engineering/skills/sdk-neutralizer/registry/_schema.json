@@ -1,0 +1,188 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "sdk-registry-entry.schema.json",
+  "title": "SDK Neutralization Registry Entry",
+  "description": "Defines which public API methods of a third-party SDK can be safely neutralized (stubbed) in a decompiled Android APK.",
+  "type": "object",
+  "required": ["sdk_id", "display_name", "vendor", "category", "packages", "targets"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "sdk_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+$",
+      "description": "Unique lowercase identifier for this SDK (used as filename stem)"
+    },
+    "display_name": {
+      "type": "string",
+      "description": "Human-readable SDK name"
+    },
+    "description": {
+      "type": "string"
+    },
+    "vendor": {
+      "type": "string"
+    },
+    "category": {
+      "type": "string",
+      "enum": ["ads", "analytics", "attribution", "crash_reporting", "ads_mediation", "social"]
+    },
+    "known_versions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "SDK versions tested against (for reference only)"
+    },
+    "packages": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Root Java/Kotlin packages of this SDK"
+    },
+    "obfuscation": {
+      "type": "object",
+      "properties": {
+        "public_api": {
+          "type": "string",
+          "enum": ["readable", "mixed", "obfuscated"]
+        },
+        "internals": {
+          "type": "string",
+          "enum": ["readable", "mixed", "obfuscated"]
+        },
+        "internal_prefix": {
+          "type": "string",
+          "description": "If known, the obfuscation prefix pattern (e.g. 'zz', single letters)"
+        }
+      },
+      "additionalProperties": false
+    },
+    "targets": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "entry_points": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/class_target" },
+          "description": "Level 1: SDK init methods. Stubbing these disables the entire SDK."
+        },
+        "ad_operations": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/class_target" },
+          "description": "Level 2: load/show/cache methods. Safety net if init stub is bypassed."
+        },
+        "deep_patterns": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/deep_pattern" },
+          "description": "Level 3: Broad internal patterns. Use for well-known SDK internals."
+        }
+      }
+    },
+    "manifest_components": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/manifest_component" },
+      "description": "AndroidManifest components to disable/remove"
+    },
+    "protected_patterns": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/protected_pattern" },
+      "description": "Methods/patterns that must NEVER be stubbed in this SDK"
+    }
+  },
+  "definitions": {
+    "class_target": {
+      "type": "object",
+      "required": ["class", "methods"],
+      "additionalProperties": false,
+      "properties": {
+        "class": {
+          "type": "string",
+          "description": "Fully qualified Java class name (dot-separated)"
+        },
+        "methods": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/method_target" },
+          "minItems": 1
+        }
+      }
+    },
+    "method_target": {
+      "type": "object",
+      "required": ["name", "stub"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Method name"
+        },
+        "signature": {
+          "type": "string",
+          "description": "Smali-style signature or '*' for all overloads"
+        },
+        "stub": {
+          "type": "string",
+          "enum": ["return-void", "return-false/0", "return-null"],
+          "description": "Stub type to apply"
+        },
+        "note": {
+          "type": "string"
+        }
+      }
+    },
+    "deep_pattern": {
+      "type": "object",
+      "required": ["package_glob", "rule"],
+      "additionalProperties": false,
+      "properties": {
+        "package_glob": {
+          "type": "string",
+          "description": "Glob pattern for packages (e.g. 'com.google.android.gms.internal.ads.**')"
+        },
+        "rule": {
+          "type": "string",
+          "enum": ["stub_all_void", "stub_all_concrete", "stub_all_non_getter"],
+          "description": "How aggressively to stub matched classes"
+        },
+        "note": {
+          "type": "string"
+        }
+      }
+    },
+    "manifest_component": {
+      "type": "object",
+      "required": ["type", "class", "action"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["activity", "service", "receiver", "provider"]
+        },
+        "class": {
+          "type": "string"
+        },
+        "action": {
+          "type": "string",
+          "enum": ["disable", "remove"]
+        },
+        "note": {
+          "type": "string"
+        }
+      }
+    },
+    "protected_pattern": {
+      "type": "object",
+      "required": ["pattern", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "pattern": {
+          "type": "string",
+          "description": "Glob or regex pattern for methods to protect"
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

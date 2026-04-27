@@ -1,0 +1,47 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "adjust",
+  "display_name": "Adjust",
+  "description": "Adjust mobile attribution and analytics SDK",
+  "vendor": "Adjust",
+  "category": "attribution",
+  "known_versions": [],
+  "packages": [
+    "com.adjust.sdk"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "readable"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "com.adjust.sdk.Adjust",
+        "methods": [
+          { "name": "onCreate", "signature": "*", "stub": "return-void", "note": "Main SDK init" },
+          { "name": "trackEvent", "signature": "*", "stub": "return-void", "note": "Event tracking" },
+          { "name": "setEnabled", "signature": "*", "stub": "return-void" },
+          { "name": "addSessionCallbackParameter", "signature": "*", "stub": "return-void" },
+          { "name": "addSessionPartnerParameter", "signature": "*", "stub": "return-void" }
+        ]
+      }
+    ],
+    "ad_operations": [],
+    "deep_patterns": [
+      {
+        "package_glob": "com.adjust.sdk.**",
+        "rule": "stub_all_void",
+        "note": "Internal SDK classes"
+      }
+    ]
+  },
+  "manifest_components": [
+    {
+      "type": "receiver",
+      "class": "com.adjust.sdk.AdjustReferrerReceiver",
+      "action": "disable",
+      "note": "Install referrer receiver"
+    }
+  ],
+  "protected_patterns": []
+}

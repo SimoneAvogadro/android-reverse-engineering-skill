@@ -1,0 +1,41 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "firebase-crashlytics",
+  "display_name": "Firebase Crashlytics",
+  "description": "Google Firebase Crashlytics crash reporting",
+  "vendor": "Google",
+  "category": "crash_reporting",
+  "known_versions": [],
+  "packages": [
+    "com.google.firebase.crashlytics"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "obfuscated"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "com.google.firebase.crashlytics.FirebaseCrashlytics",
+        "methods": [
+          { "name": "log", "signature": "*", "stub": "return-void", "note": "Log message" },
+          { "name": "recordException", "signature": "*", "stub": "return-void", "note": "Record non-fatal exception" },
+          { "name": "setUserId", "signature": "*", "stub": "return-void" },
+          { "name": "setCustomKey", "signature": "*", "stub": "return-void" },
+          { "name": "setCrashlyticsCollectionEnabled", "signature": "*", "stub": "return-void" },
+          { "name": "sendUnsentReports", "signature": "*", "stub": "return-void" },
+          { "name": "deleteUnsentReports", "signature": "*", "stub": "return-void" }
+        ]
+      }
+    ],
+    "ad_operations": [],
+    "deep_patterns": []
+  },
+  "manifest_components": [],
+  "protected_patterns": [
+    {
+      "pattern": "*.getInstance()*",
+      "reason": "Singleton accessor — null causes NPE if called by app code"
+    }
+  ]
+}

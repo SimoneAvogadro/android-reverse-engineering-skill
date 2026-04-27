@@ -1,0 +1,47 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "pubnative",
+  "display_name": "PubNative / HyBid",
+  "description": "PubNative HyBid SDK for programmatic advertising",
+  "vendor": "Verve Group",
+  "category": "ads",
+  "known_versions": [],
+  "packages": [
+    "net.pubnative.lite.sdk"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "mixed"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "net.pubnative.lite.sdk.HyBid",
+        "methods": [
+          { "name": "initialize", "signature": "*", "stub": "return-void", "note": "Main SDK init" }
+        ]
+      }
+    ],
+    "ad_operations": [
+      {
+        "class": "net.pubnative.lite.sdk.interstitial.HyBidInterstitialAd",
+        "methods": [
+          { "name": "load", "signature": "*", "stub": "return-void" },
+          { "name": "show", "signature": "*", "stub": "return-void" },
+          { "name": "isReady", "signature": "*", "stub": "return-false/0" }
+        ]
+      },
+      {
+        "class": "net.pubnative.lite.sdk.rewarded.HyBidRewardedAd",
+        "methods": [
+          { "name": "load", "signature": "*", "stub": "return-void" },
+          { "name": "show", "signature": "*", "stub": "return-void" },
+          { "name": "isReady", "signature": "*", "stub": "return-false/0" }
+        ]
+      }
+    ],
+    "deep_patterns": []
+  },
+  "manifest_components": [],
+  "protected_patterns": []
+}

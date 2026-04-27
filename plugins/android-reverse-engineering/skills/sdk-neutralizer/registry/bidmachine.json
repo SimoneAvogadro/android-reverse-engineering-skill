@@ -1,0 +1,59 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "bidmachine",
+  "display_name": "BidMachine",
+  "description": "BidMachine programmatic ad SDK",
+  "vendor": "BidMachine",
+  "category": "ads",
+  "known_versions": [],
+  "packages": [
+    "io.bidmachine"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "obfuscated"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "io.bidmachine.BidMachine",
+        "methods": [
+          { "name": "initialize", "signature": "*", "stub": "return-void", "note": "Main SDK init" }
+        ]
+      }
+    ],
+    "ad_operations": [
+      {
+        "class": "io.bidmachine.interstitial.InterstitialAd",
+        "methods": [
+          { "name": "load", "signature": "*", "stub": "return-void" },
+          { "name": "show", "signature": "*", "stub": "return-void" }
+        ]
+      },
+      {
+        "class": "io.bidmachine.rewarded.RewardedAd",
+        "methods": [
+          { "name": "load", "signature": "*", "stub": "return-void" },
+          { "name": "show", "signature": "*", "stub": "return-void" }
+        ]
+      },
+      {
+        "class": "io.bidmachine.banner.BannerView",
+        "methods": [
+          { "name": "load", "signature": "*", "stub": "return-void" },
+          { "name": "destroy", "signature": "*", "stub": "return-void" }
+        ]
+      }
+    ],
+    "deep_patterns": []
+  },
+  "manifest_components": [
+    {
+      "type": "provider",
+      "class": "io.bidmachine.BidMachineInitProvider",
+      "action": "disable",
+      "note": "Auto-init ContentProvider"
+    }
+  ],
+  "protected_patterns": []
+}

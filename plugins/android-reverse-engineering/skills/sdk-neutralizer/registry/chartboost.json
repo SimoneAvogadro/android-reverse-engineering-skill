@@ -1,0 +1,66 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "chartboost",
+  "display_name": "Chartboost",
+  "description": "Chartboost ad SDK",
+  "vendor": "Chartboost",
+  "category": "ads",
+  "known_versions": [],
+  "packages": [
+    "com.chartboost.sdk"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "obfuscated"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "com.chartboost.sdk.Chartboost",
+        "methods": [
+          { "name": "startWithAppId", "signature": "*", "stub": "return-void", "note": "Main SDK init" }
+        ]
+      }
+    ],
+    "ad_operations": [
+      {
+        "class": "com.chartboost.sdk.ads.Interstitial",
+        "methods": [
+          { "name": "cache", "signature": "*", "stub": "return-void" },
+          { "name": "show", "signature": "*", "stub": "return-void" }
+        ]
+      },
+      {
+        "class": "com.chartboost.sdk.ads.Rewarded",
+        "methods": [
+          { "name": "cache", "signature": "*", "stub": "return-void" },
+          { "name": "show", "signature": "*", "stub": "return-void" }
+        ]
+      },
+      {
+        "class": "com.chartboost.sdk.ads.Banner",
+        "methods": [
+          { "name": "cache", "signature": "*", "stub": "return-void" },
+          { "name": "show", "signature": "*", "stub": "return-void" },
+          { "name": "detach", "signature": "*", "stub": "return-void" }
+        ]
+      }
+    ],
+    "deep_patterns": [
+      {
+        "package_glob": "com.chartboost.sdk.internal.**",
+        "rule": "stub_all_concrete",
+        "note": "Internal obfuscated classes"
+      }
+    ]
+  },
+  "manifest_components": [
+    {
+      "type": "activity",
+      "class": "com.chartboost.sdk.CBImpressionActivity",
+      "action": "disable",
+      "note": "Ad impression display activity"
+    }
+  ],
+  "protected_patterns": []
+}

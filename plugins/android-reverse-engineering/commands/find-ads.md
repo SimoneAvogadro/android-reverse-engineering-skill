@@ -60,6 +60,25 @@ This searches for ad SDK calls **only in app code** (excluding library packages 
 
 Use the reference documents in `${CLAUDE_PLUGIN_ROOT}/skills/ad-analysis/references/` for SDK-specific patterns.
 
+### Step 3b: Filter false positives
+
+When analyzing the results, distinguish real SDK presence from false positives:
+
+- **HIGH confidence** — SDK-specific classes/imports are present (e.g., `MobileAds.initialize()`, `import com.unity3d.ads.UnityAds`). The SDK is definitely integrated.
+- **MEDIUM confidence** — Only generic ad format names matched (e.g., `InterstitialAd`, `BannerView`, `RewardedAd`). These class names may be from the actual SDK or from custom wrappers. Verify by checking the full import path.
+- **LOW confidence** — Only generic strings matched (e.g., "banner", "interstitial" in comments or unrelated code). Check the context.
+
+**Quick verification**: For any SDK flagged as detected, check if its package directory actually exists:
+```bash
+# Example: verify Unity Ads is really present
+find "$SOURCE_DIR" -path "*/com/unity3d/ads" -type d
+```
+
+Use `--summary` for a quick confidence-scored overview before diving into raw output:
+```bash
+bash ${CLAUDE_PLUGIN_ROOT}/skills/ad-analysis/scripts/find-ads.sh "$SOURCE_DIR" --summary
+```
+
 ### Step 4: Produce report
 
 Generate a structured report with:

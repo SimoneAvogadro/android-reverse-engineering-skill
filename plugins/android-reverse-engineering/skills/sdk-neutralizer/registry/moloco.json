@@ -1,0 +1,66 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "moloco",
+  "display_name": "Moloco",
+  "description": "Moloco programmatic ad SDK",
+  "vendor": "Moloco",
+  "category": "ads",
+  "known_versions": [],
+  "packages": [
+    "com.moloco.sdk"
+  ],
+  "obfuscation": {
+    "public_api": "mixed",
+    "internals": "obfuscated"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "com.moloco.sdk.Init",
+        "methods": [
+          { "name": "registerAllExtensions", "signature": "*", "stub": "return-void", "note": "Protobuf init registration" }
+        ]
+      }
+    ],
+    "ad_operations": [],
+    "deep_patterns": [
+      {
+        "package_glob": "com.moloco.sdk.internal.**",
+        "rule": "stub_all_void",
+        "note": "Internal SDK classes"
+      },
+      {
+        "package_glob": "com.moloco.sdk.xenoss.**",
+        "rule": "stub_all_void",
+        "note": "Ad renderer internals"
+      }
+    ]
+  },
+  "manifest_components": [
+    {
+      "type": "activity",
+      "class": "com.moloco.sdk.xenoss.sdkdevkit.android.adrenderer.internal.templates.renderer.fullscreen.FullscreenWebviewActivity",
+      "action": "disable",
+      "note": "Fullscreen webview ad activity"
+    },
+    {
+      "type": "activity",
+      "class": "com.moloco.sdk.xenoss.sdkdevkit.android.adrenderer.internal.vast.VastActivity",
+      "action": "disable",
+      "note": "VAST video ad activity"
+    },
+    {
+      "type": "activity",
+      "class": "com.moloco.sdk.xenoss.sdkdevkit.android.adrenderer.internal.staticrenderer.StaticAdActivity",
+      "action": "disable",
+      "note": "Static ad activity"
+    },
+    {
+      "type": "activity",
+      "class": "com.moloco.sdk.xenoss.sdkdevkit.android.adrenderer.internal.mraid.MraidActivity",
+      "action": "disable",
+      "note": "MRAID ad activity"
+    }
+  ],
+  "protected_patterns": []
+}
