@@ -127,7 +127,7 @@ for obf, real in mapping.items():
     by_pkg[pkg].append((real, obf, file_real[obf]))
 
 for pkg, rows in by_pkg.items():
-    safe = pkg.replace(".", "_") or "default"
+    safe = os.path.basename(pkg).replace(".", "_") or "default"
     with open(os.path.join(OUT, "by_package", f"{safe}.txt"), "w") as f:
         for real, obf, p in sorted(rows):
             f.write(f"{real}\t{obf}\t{p}\n")

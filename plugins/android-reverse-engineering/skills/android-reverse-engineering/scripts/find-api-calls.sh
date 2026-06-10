@@ -202,7 +202,7 @@ if [[ "$SEARCH_ALL" == true || "$SEARCH_PATHS" == true ]]; then
   # Print a flat unique list rather than file:line — this is the inventory.
   grep -rhoE --include='*.java' --include='*.kt' "$PATHS_REGEX" "$SOURCE_DIR" 2>/dev/null \
       | grep -Ev "$EXCLUDE" \
-      | sort -u
+      | sort -u || true
   echo
   section "Endpoint-Shaped Path Literals — call sites"
   grep $GREP_OPTS -E "$PATHS_REGEX" "$SOURCE_DIR" 2>/dev/null \
@@ -218,12 +218,19 @@ fi
 if [[ "$SEARCH_ALL" == true || "$SEARCH_URLS" == true ]]; then
   HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   DENYLIST="$HERE/../references/third_party_hosts.txt"
-  # Hostname must have at least one dot and end in a 2+ letter TLD.
-  STRICT_URL='https?://[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+\.[A-Za-z]{2,}(:[0-9]{1,5})?(/[^"<>[:space:]]*)?'
+  # Accept three host shapes, all rejecting whitespace / angle brackets /
+  # non-printables in the path:
+  #   * IPv4 literal (dev/staging endpoints, high signal)            192.168.0.1
+  #   * dotted host: >=2 labels ending in a 2+ letter TLD (incl apex) example.com
+  #   * bare single-label host, BUT only when followed by ':port' or  localhost:3000
+  #     '/path' — keeps internal hosts (localhost, internal-backend)  svc/health
+  #     while still dropping Kotlin-stdlib dictionary fragments like
+  #     "http://An Introduction..." (bare word, no port/path follows).
+  STRICT_URL='https?://(([0-9]{1,3}(\.[0-9]{1,3}){3}|[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})(:[0-9]{1,5})?(/[^"<>[:space:]]*)?|[A-Za-z0-9-]+(:[0-9]{1,5}(/[^"<>[:space:]]*)?|/[^"<>[:space:]]*))'
 
   TMP="$(mktemp)"
   trap 'rm -f "$TMP"' EXIT
-  grep -rhoE --include='*.java' --include='*.kt' "$STRICT_URL" "$SOURCE_DIR" 2>/dev/null \
+  { grep -rhoE --include='*.java' --include='*.kt' "$STRICT_URL" "$SOURCE_DIR" 2>/dev/null || true; } \
       | sort -u > "$TMP"
 
   # Extract host: strip scheme, take part up to first ':' or '/'.
