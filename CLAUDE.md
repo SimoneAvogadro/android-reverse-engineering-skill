@@ -117,11 +117,14 @@ This is a documentation-and-scripts plugin with no compiled code, no test suite,
 
 ## Versioning
 
-The plugin version is declared in **two** files that **must be kept in sync**:
-- `.claude-plugin/marketplace.json` → `plugins[0].version` (marketplace catalog)
+The plugin version is declared in **three** places across two files that **must always be kept in sync**:
+- `.claude-plugin/marketplace.json` → `metadata.version` (marketplace metadata)
+- `.claude-plugin/marketplace.json` → `plugins[0].version` (marketplace catalog entry)
 - `plugins/android-reverse-engineering/.claude-plugin/plugin.json` → `version` (plugin manifest)
 
-Claude Code reads the version from `plugin.json` with priority — if that file has a stale version, `/plugin` will show the old number even if `marketplace.json` is updated. **Always bump both files together.**
+Claude Code reads the version from `plugin.json` with priority — if that file has a stale version, `/plugin` will show the old number even if `marketplace.json` is updated. **Always bump all three together; never update only one file.**
+
+**When to bump:** suggest a version bump whenever a PR or significant change lands (new skill, new script, new SDK registry entries, workflow changes) — minor bump (`1.x.0`) for new features/important PRs, patch bump (`1.x.y`) for fixes and docs-only changes. Keep `master` and long-lived feature branches on the same version after merging between them, so the version fields don't conflict on the next merge.
 
 ## Conventions
 
