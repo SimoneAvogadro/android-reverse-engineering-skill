@@ -24,6 +24,31 @@ If anything is missing, follow the installation instructions in `${CLAUDE_PLUGIN
 
 ## Workflow
 
+### Phase 0: Fingerprint the App (recommended before anything else)
+
+Before installing tools or decompiling, run a fast triage to determine what
+kind of app you are looking at. **Decompiling Java is mostly useless for
+Flutter, React Native, Cordova/Capacitor, and Xamarin apps** — the real code
+lives elsewhere. The fingerprint script tells you which.
+
+```bash
+bash ${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/fingerprint.sh <file.apk|file.xapk>
+```
+
+It prints, in one screen:
+
+- **Mobile framework** (Flutter / React Native / Cordova / Xamarin / Native Kotlin / etc.) with the file marker that triggered the verdict.
+- **HTTP stack** (Retrofit, OkHttp, Ktor, Apollo, Volley) detected via DEX string scan — works even when class names are obfuscated.
+- **DI / serialization** signals (Hilt, Dagger, Koin, kotlinx.serialization, Moshi, Gson, Jackson).
+- **Obfuscation level** estimate based on root-level short-named packages.
+- **Notable third-party SDKs** (AppsFlyer, Datadog, Sentry, Firebase, payment SDKs, support/chat SDKs, etc.).
+- **Consolidated native libraries** across the base APK and all splits — XAPK split bundles often place `.so` files in `config.<abi>.apk`, not in `base.apk`.
+- **Recommended next step**, which differs by framework (e.g. for Flutter the script suggests `blutter` / `strings libapp.so` rather than jadx).
+
+If the fingerprint says the app is Flutter / RN / Cordova / Xamarin, **stop**
+and switch to the framework-appropriate tooling. Phases 1–5 below assume a
+native (Java/Kotlin) Android app.
+
 ### Phase 1: Verify and Install Dependencies
 
 Before decompiling, confirm that the required tools are available — and install any that are missing.
@@ -123,11 +148,44 @@ Navigate the decompiled output to understand the app's architecture.
    - Distinguish app code from third-party libraries
    - Look for packages named `api`, `network`, `data`, `repository`, `service`, `retrofit`, `http` — these are where API calls live
 
-3. **Identify the architecture pattern**:
+3. **Read every `BuildConfig.java`** — these are almost never obfuscated and frequently leak the highest-signal constants in the entire APK (base URLs, flavor names, build type, third-party API keys, feature flags):
+   ```bash
+   find <output>/sources -name BuildConfig.java -exec grep -H '=' {} \;
+   ```
+   Each Gradle module emits its own `BuildConfig`, so expect 1–N hits. Read all of them.
+
+4. **Identify the architecture pattern**:
    - MVP: look for `Presenter` classes
    - MVVM: look for `ViewModel` classes and `LiveData`/`StateFlow`
    - Clean Architecture: look for `domain`, `data`, `presentation` packages
    - This informs where to look for network calls in the next phases
+
+### Phase 3.5: Recover Kotlin Class Names (only for obfuscated Kotlin apps)
+
+If Phase 0 reported moderate / high obfuscation **and** the app is Kotlin
+(Compose / kotlin_module markers detected), run the metadata recovery
+script before tracing call flows. R8 obfuscates JVM symbols but cannot
+strip Kotlin metadata strings, so original FQNs leak through
+`@DebugMetadata` and `@Metadata.d2`.
+
+```bash
+bash ${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/recover-kotlin-names.sh \
+    <output>/sources <output>/mapping
+```
+
+Then use the lookup helper instead of plain grep — every hit comes
+annotated with the owning class's real name:
+
+```bash
+bash ${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/lookup-name.sh \
+    <output>/mapping --grep '"/api/' <output>/sources
+```
+
+Typical recovery on a real-world Kotlin app: ~100% of `*Repository` /
+`*ViewModel` / `*UseCase` / `*Impl` classes, ~80% of DTOs.
+
+See `${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/references/kotlin-name-recovery.md`
+for the full technique and limitations.
 
 ### Phase 4: Trace Call Flows
 
@@ -190,15 +248,32 @@ On Windows (PowerShell):
 & "${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/find-api-calls.ps1" <output>/sources/ -Auth
 ```
 
-Then, for each discovered endpoint, read the surrounding source code to extract:
-- HTTP method and path
-- Base URL
-- Path parameters, query parameters, request body
-- Headers (especially authentication)
-- Response type
-- Where it's called from (the call chain from Phase 4)
+Document the endpoints in **two tiers** — going deep on every endpoint is
+prohibitively expensive on apps with 100+ paths, and most of them do not
+warrant it. Always produce Tier 1; expand Tier 2 only for the endpoints
+that matter.
 
-**Document each endpoint** using this format:
+#### Tier 1 — flat inventory (always)
+
+A single table covering every discovered endpoint. Aim for one line each;
+if you cannot determine a column, write `?`.
+
+| Host | Method | Path | Auth | Source file |
+|------|--------|------|------|-------------|
+| `api.example.com` | GET | `/v1/users/profile` | Bearer | `com/example/api/UserApi.java` |
+| `api.example.com` | POST | `/v1/auth/login` | none | `com/example/api/AuthApi.java` |
+
+This table answers "what does the backend look like" in one screen and
+takes ~5 minutes to produce from the `--paths` output even on a large app.
+
+#### Tier 2 — per-endpoint detail (only for high-value endpoints)
+
+Reserve the detailed format for the few endpoints that actually need it:
+
+- the entire authentication flow (login, refresh, logout, OTP/SMS, anonymous, registration)
+- payment / checkout / order-creation endpoints
+- anything the user explicitly asked about
+- anything that looked unusual during the scan (custom signing, undocumented headers, etc.)
 
 ```markdown
 ### `METHOD /path`
@@ -212,6 +287,10 @@ Then, for each discovered endpoint, read the surrounding source code to extract:
 - **Response**: `ApiResponse<User>`
 - **Called from**: `LoginActivity → LoginViewModel → UserRepository → ApiService`
 ```
+
+As a default, do not produce Tier 2 entries for more than ~10 endpoints
+unless the user explicitly asks for more — Tier 1 plus a Tier 2 deep dive
+on auth + 1-2 key flows is what most consumers of this work actually want.
 
 See `${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/references/api-extraction-patterns.md` for library-specific search patterns and the full documentation template.
 

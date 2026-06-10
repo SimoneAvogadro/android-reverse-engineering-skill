@@ -4,6 +4,8 @@
 
 A Claude Code skill that decompiles Android APK/XAPK/JAR/AAR files, **extracts HTTP APIs**, **audits privacy** by detecting tracker/analytics and advertising SDKs, and **neutralizes SDK telemetry** at the smali bytecode level for enterprise deployment — so you can document endpoints, understand data collection, assess ad monetization, and produce sanitized APKs without the original source code.
 
+> **First-class Kotlin support**: modern Android apps are Kotlin/KMP, heavily obfuscated with R8. This skill recovers the **original Kotlin class names** from metadata R8 cannot strip, and extracts APIs from **Ktor**, **Apollo (GraphQL)** and **Koin** — not just the classic Retrofit/OkHttp stack. See [Kotlin name recovery](#kotlin-name-recovery-r8-deobfuscation) below.
+
 > **Windows / PowerShell support (experimental)**: The `*.ps1` scripts alongside the bash ones are a recent community contribution, still being stabilised. For any issues please open an issue on **this** repository (not on the contributors' upstream forks): the PowerShell scripts are maintained here by [@SimoneAvogadro](https://github.com/SimoneAvogadro).
 
 ## Table of Contents
@@ -22,14 +24,16 @@ A Claude Code skill that decompiles Android APK/XAPK/JAR/AAR files, **extracts H
 
 | Capability | Description |
 |------------|-------------|
+| **Fingerprint first (Phase 0)** | Triage an APK/XAPK in seconds — detect the framework (Flutter / React Native / Cordova / Xamarin / native-Kotlin), HTTP stack, obfuscation level and native libs *before* spending time on a full decompile |
 | **Decompile** | APK, XAPK, JAR, and AAR files using jadx and Fernflower/Vineflower (single engine or side-by-side comparison) |
-| **Extract APIs** | Retrofit endpoints, OkHttp calls, hardcoded URLs, auth headers and tokens |
+| **Recover Kotlin names** | Rebuild original `*Repository` / `*ViewModel` / `*UseCase` class names from R8-obfuscated binaries using Kotlin metadata that R8 cannot strip |
+| **Extract APIs** | Retrofit, OkHttp, Volley **and modern Kotlin/KMP stacks: Ktor, Apollo (GraphQL), Koin DI** — endpoints, hardcoded URLs, auth headers, tokens and HMAC request-signing schemes |
 | **Trace call flows** | From Activities/Fragments through ViewModels and repositories down to HTTP calls |
 | **Detect tracker/analytics SDKs** | Firebase Analytics, Adjust, AppsFlyer, Mixpanel, Amplitude, Segment, Braze, CleverTap, Flurry — with deep analysis of init, events, user identification, consent, and data exfiltration endpoints |
 | **Detect advertising SDKs** | AdMob, Unity Ads, IronSource/LevelPlay, AppLovin/MAX, Meta Audience Network, Vungle, InMobi, Chartboost, Pangle, Mintegral — with ad format mapping, mediation analysis, and consent framework detection |
 | **Neutralize SDK entry points** | Replace tracker/ad SDK method bodies with no-op stubs at the smali level, disable manifest components, and rebuild a signed APK for enterprise sideloading |
 | **Analyze structure** | Manifest, packages, architecture patterns |
-| **Handle obfuscation** | Strategies for navigating ProGuard/R8 output |
+| **Handle obfuscation** | R8-resistant path/URL extraction plus strategies for navigating ProGuard/R8 output |
 
 ## Requirements
 
@@ -157,6 +161,10 @@ bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scri
 # Install ALL neutralizer dependencies at once (java, apktool, apksigner, zip)
 bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/install-dep.sh neutralize-all
 
+# Fingerprint an APK/XAPK BEFORE decompiling (Phase 0 triage):
+# framework, HTTP stack, obfuscation level, native libs, notable SDKs
+bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/fingerprint.sh app.apk
+
 # Decompile APK with jadx (default)
 bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/decompile.sh app.apk
 
@@ -169,10 +177,15 @@ bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scri
 # Run both engines and compare
 bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/decompile.sh --engine both --deobf app.apk
 
-# Find API calls
+# Find API calls — defaults to a full scan across every supported stack
 bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/find-api-calls.sh output/sources/
 bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/find-api-calls.sh output/sources/ --retrofit
 bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/find-api-calls.sh output/sources/ --urls
+
+# Modern Kotlin/KMP stacks and obfuscation-resistant extraction
+bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/find-api-calls.sh output/sources/ --ktor    # Ktor client
+bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/find-api-calls.sh output/sources/ --apollo  # Apollo / GraphQL
+bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/find-api-calls.sh output/sources/ --paths   # quoted path literals that survive R8 inlining
 
 # Find tracker/analytics SDKs
 bash plugins/android-reverse-engineering/skills/tracker-analysis/scripts/find-trackers.sh output/sources/
@@ -202,6 +215,29 @@ bash plugins/android-reverse-engineering/skills/sdk-neutralizer/scripts/rebuild-
 bash plugins/android-reverse-engineering/skills/sdk-neutralizer/scripts/neutralize.sh app-decoded --replay
 ```
 
+### Kotlin name recovery (R8 deobfuscation)
+
+Most real-world Kotlin/KMP apps ship through R8, so the decompiled classes come
+out as `a.b.c`. R8 renames the JVM symbols but **cannot strip the Kotlin
+metadata strings** — the Kotlin runtime (reflection, coroutines) needs the
+original fully-qualified names at runtime. This skill mines those
+`@DebugMetadata` / `@Metadata` annotations to rebuild an `obfuscated → real`
+class-name map. On a typical app it recovers ~100 % of the
+`*Repository` / `*ViewModel` / `*UseCase` / `*Impl` classes you actually want to
+read.
+
+```bash
+# 1. Build the mapping from the decompiled sources
+bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/recover-kotlin-names.sh output/sources/ output/names/
+#    → output/names/mapping.tsv, mapping.json, by_package/
+
+# 2. Query it: resolve an obfuscated name, search by real name, or grep
+#    the sources with each hit annotated with its recovered class name
+bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/lookup-name.sh output/names/ LoginRepository
+bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/lookup-name.sh output/names/ -o a.b.c
+bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/lookup-name.sh output/names/ --grep 'login' output/sources/
+```
+
 ## Repository Structure
 
 ```text
@@ -214,12 +250,14 @@ android-reverse-engineering-skill/
 │       │   └── plugin.json                 # Plugin manifest
 │       ├── skills/
 │       │   ├── android-reverse-engineering/ # Core RE skill
-│       │   │   ├── SKILL.md                # 5-phase workflow
+│       │   │   ├── SKILL.md                # Core workflow (Phase 0–5)
 │       │   │   ├── references/
 │       │   │   │   ├── setup-guide.md
 │       │   │   │   ├── jadx-usage.md
 │       │   │   │   ├── fernflower-usage.md
 │       │   │   │   ├── api-extraction-patterns.md
+│       │   │   │   ├── kotlin-name-recovery.md
+│       │   │   │   ├── third_party_hosts.txt   # denylist for first/third-party bucketing
 │       │   │   │   └── call-flow-analysis.md
 │       │   │   └── scripts/
 │       │   │       ├── check-deps.sh       # Bash
@@ -228,6 +266,9 @@ android-reverse-engineering-skill/
 │       │   │       ├── install-dep.ps1
 │       │   │       ├── decompile.sh
 │       │   │       ├── decompile.ps1
+│       │   │       ├── fingerprint.sh          # Phase 0 — pre-decompile triage
+│       │   │       ├── recover-kotlin-names.sh # R8 → real Kotlin class names
+│       │   │       ├── lookup-name.sh          # query the recovered name map
 │       │   │       ├── find-api-calls.sh
 │       │   │       └── find-api-calls.ps1
 │       │   ├── tracker-analysis/            # Tracker/analytics SDK detection
@@ -279,6 +320,7 @@ android-reverse-engineering-skill/
 
 Thanks to the contributors who have shaped this skill:
 
+- [@tajchert](https://github.com/tajchert) — Phase 0 fingerprinting, R8-resistant Kotlin name recovery (`recover-kotlin-names.sh`, `lookup-name.sh`), and Ktor / Apollo / Koin / HMAC extraction patterns (#16)
 - [@philjn](https://github.com/philjn) — Native Windows / PowerShell support (`check-deps.ps1`, `install-dep.ps1`, `decompile.ps1`, `find-api-calls.ps1`) and split/bundled APK detection in `decompile.sh` (#8)
 - [@txhno](https://github.com/txhno) — Migration to the maintained [`ThexXTURBOXx/dex2jar`](https://github.com/ThexXTURBOXx/dex2jar) fork (#12)
 - [@muqiao215](https://github.com/muqiao215) — Decompile partial-success handling, Fernflower timeout safeguard, intermediate-artifact directory (#10)

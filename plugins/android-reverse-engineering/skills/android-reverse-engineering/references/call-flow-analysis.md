@@ -84,9 +84,9 @@ Look for:
 - Firebase/analytics initialization
 - Base URL configuration
 
-## 5. Dependency Injection (Dagger / Hilt)
+## 5. Dependency Injection
 
-Modern Android apps use DI. Trace bindings to find implementations:
+### Dagger / Hilt
 
 ```bash
 # Hilt modules
@@ -102,10 +102,43 @@ grep -rn '@Component\|@Subcomponent' sources/
 grep -rn '@Inject' sources/
 ```
 
-To trace a call flow through DI:
-1. Find where an interface is used (e.g., `ApiService` injected into a repository)
-2. Find the `@Provides` or `@Binds` method that creates the implementation
-3. Follow the implementation to the actual HTTP call
+### Koin
+
+Koin is the dominant DI framework in Kotlin Multiplatform and a large
+share of Kotlin-only Android apps. It uses a runtime DSL rather than
+compile-time generated factories, so the search patterns are different:
+
+```bash
+# Confirm Koin is actually wired up
+grep -rn 'org\.koin\.' sources/
+
+# DI module declarations
+grep -rn 'fun [A-Za-z]\+Module\|module\s*{\|module(' sources/
+
+# Bindings inside a module DSL
+grep -rn 'single\s*[<{(]\|factory\s*[<{(]\|viewModel\s*[<{(]\|scoped\s*[<{(]\|singleOf\|factoryOf' sources/
+
+# Resolution call-sites (where a binding is consumed)
+grep -rn '\bget\s*<\|\binject\s*<\|by\s\+inject\b\|by\s\+viewModel\b\|getKoin' sources/
+```
+
+After R8, every binding lambda becomes an anonymous
+`Function2<Scope, ParametersHolder, T>` impl. To find the binding for an
+interface `Foo`, look for files that contain both a Koin import / module
+DSL marker and a reference to `Foo`:
+
+```bash
+grep -rln 'org\.koin\.core\.module' sources/ | xargs grep -l 'Foo'
+```
+
+### Trace through DI
+
+1. Find where an interface is used (e.g. `ApiService` injected into a
+   repository).
+2. Find the `@Provides` / `@Binds` method (Hilt) **or** the
+   `single { ... }` / `factory { ... }` block (Koin) that creates the
+   implementation.
+3. Follow the implementation to the actual HTTP call.
 
 ## 6. Find Constants and Configuration
 
@@ -145,8 +178,9 @@ When code is obfuscated (ProGuard/R8):
 1. **Start from strings**: Search for URLs, error messages, and known constants
 2. **Start from framework classes**: Activities and Fragments are named in the manifest
 3. **Follow library calls**: Retrofit `@GET`/`@POST` annotations are readable even when the interface class name is obfuscated
-4. **Use `--deobf`**: jadx can generate readable replacement names
+4. **Recover original Kotlin names from metadata**: `@DebugMetadata` and `@Metadata.d2` strings preserve the original FQNs even after R8 obfuscation. Run `scripts/recover-kotlin-names.sh` to build an `obf -> real` map (typically recovers 30-50% of classes — and almost 100% of `*Repository` / `*ViewModel` / `*Impl`). See [`kotlin-name-recovery.md`](./kotlin-name-recovery.md). This is the single highest-leverage step on any Kotlin app.
 5. **Cross-reference**: If `class a` calls `Retrofit.create(b.class)`, then `b` is a Retrofit service interface
+6. **`--deobf` is rarely enough on its own**: jadx's `--deobf` renames obfuscated symbols with synthetic placeholders (`p001a`, `C0123Foo`) — useful for disambiguation but it does **not** recover original names. Pair it with the metadata recovery above.
 
 ## 8. Tracing a Complete Call Flow: Example
 
