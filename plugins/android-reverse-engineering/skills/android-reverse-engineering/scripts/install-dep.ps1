@@ -1,11 +1,11 @@
-# install-dep.ps1 — Install a single dependency for Android reverse engineering
+# install-dep.ps1: Install a single dependency for Android reverse engineering
 # Usage: install-dep.ps1 <dependency>
 # Dependencies: java, jadx, vineflower, dex2jar, apktool, adb
 #
 # Exit codes:
-#   0 — installed successfully
-#   1 — installation failed
-#   2 — requires manual action
+#   0: installed successfully
+#   1: installation failed
+#   2: requires manual action
 param(
     [Parameter(Position=0)]
     [string]$Dep
@@ -73,11 +73,13 @@ function Get-GHLatestTag {
 function Add-ToUserPath {
     param([string]$Dir)
     $currentPath = [Environment]::GetEnvironmentVariable('PATH', 'User')
-    if ($currentPath -notlike "*$Dir*") {
+    $pathEntries = if ($currentPath) { $currentPath -split ';' } else { @() }
+    if ($pathEntries -notcontains $Dir) {
         [Environment]::SetEnvironmentVariable('PATH', "$Dir;$currentPath", 'User')
         Write-Info "Added $Dir to user PATH. Restart your terminal to apply."
     }
-    if ($env:PATH -notlike "*$Dir*") {
+    $sessionEntries = $env:PATH -split ';'
+    if ($sessionEntries -notcontains $Dir) {
         $env:PATH = "$Dir;$env:PATH"
     }
 }
@@ -85,21 +87,30 @@ function Add-ToUserPath {
 $localBin   = Join-Path $env:USERPROFILE '.local\bin'
 $localShare = Join-Path $env:USERPROFILE '.local\share'
 
+function Get-JavaMajorVersion {
+    $javaBin = Get-Command java -ErrorAction SilentlyContinue
+    if (-not $javaBin) { return $null }
+    $verOutput = & java -version 2>&1 | Select-Object -First 1
+    $verStr = "$verOutput"
+    if ($verStr -match '"(\d+)') {
+        $ver = [int]$Matches[1]
+        if ($ver -eq 1 -and $verStr -match '"1\.(\d+)') {
+            $ver = [int]$Matches[1]
+        }
+        return $ver
+    }
+    return $null
+}
+
 # =====================================================================
 # Dependency installers
 # =====================================================================
 
 function Install-Java {
-    $javaBin = Get-Command java -ErrorAction SilentlyContinue
-    if ($javaBin) {
-        $verOutput = & java -version 2>&1 | Select-Object -First 1
-        if ("$verOutput" -match '"(\d+)') {
-            $ver = [int]$Matches[1]
-            if ($ver -ge 17) {
-                Write-Ok "Java $ver already installed"
-                return
-            }
-        }
+    $ver = Get-JavaMajorVersion
+    if ($ver -and $ver -ge 17) {
+        Write-Ok "Java $ver already installed"
+        return
     }
 
     Write-Info "Installing Java JDK 17+..."
@@ -274,15 +285,42 @@ function Install-Dex2Jar {
     Write-Ok "dex2jar $version installed to $installDir"
 }
 
+function Install-ApktoolFromGitHub {
+    $tag = Get-GHLatestTag "iBotPeaches/Apktool"
+    if (-not $tag) {
+        Write-Fail "Could not determine latest apktool version."
+        Write-Manual "Download from https://github.com/iBotPeaches/Apktool/releases/latest"
+    }
+
+    $version = $tag -replace '^v', ''
+    $url = "https://github.com/iBotPeaches/Apktool/releases/download/$tag/apktool_$version.jar"
+    $installDir = Join-Path $localShare 'apktool'
+    New-Item -ItemType Directory -Path $installDir -Force | Out-Null
+
+    Invoke-Download -Url $url -Dest (Join-Path $installDir 'apktool.jar')
+
+    New-Item -ItemType Directory -Path $localBin -Force | Out-Null
+    $wrapperPath = Join-Path $localBin 'apktool.cmd'
+    Set-Content -Path $wrapperPath -Value "@echo off`r`njava -jar -Duser.language=en `"$installDir\apktool.jar`" %*"
+
+    Add-ToUserPath $localBin
+    Write-Ok "apktool $version installed to $installDir"
+}
+
 function Install-Apktool {
     if (Get-Command apktool -ErrorAction SilentlyContinue) {
         Write-Ok "apktool already installed"
         return
     }
 
+    $javaVer = Get-JavaMajorVersion
+
     if ($hasScoop) {
         Write-Info "Installing apktool via scoop..."
         scoop install apktool
+    } elseif ($javaVer -and $javaVer -ge 8) {
+        Write-Info "Java $javaVer on PATH — installing apktool from GitHub (skipping Chocolatey jre8 dependency)..."
+        Install-ApktoolFromGitHub
     } elseif ($hasChoco) {
         Write-Info "Installing apktool via choco..."
         choco install apktool -y
