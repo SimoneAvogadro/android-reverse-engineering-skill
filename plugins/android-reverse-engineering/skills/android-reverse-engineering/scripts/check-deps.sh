@@ -18,7 +18,7 @@ if command -v java &>/dev/null; then
   java_version_output=$(java -version 2>&1 | head -1)
   java_version=$(echo "$java_version_output" | sed -n 's/.*"\([0-9]*\)\..*/\1/p')
   if [[ -z "$java_version" ]]; then
-    java_version=$(echo "$java_version_output" | grep -oP '\d+' | head -1)
+    java_version=$(echo "$java_version_output" | grep -oE '[0-9]+' | head -1)
   fi
   if [[ "$java_version" == "1" ]]; then
     java_version=$(echo "$java_version_output" | sed -n 's/.*"1\.\([0-9]*\)\..*/\1/p')
