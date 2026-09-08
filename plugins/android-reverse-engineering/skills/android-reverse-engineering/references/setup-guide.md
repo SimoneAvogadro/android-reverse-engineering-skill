@@ -35,6 +35,22 @@ After installation on macOS, follow the symlink instructions printed by Homebrew
 export PATH="/opt/homebrew/opt/openjdk@17/bin:$PATH"
 ```
 
+### Windows (winget)
+
+From PowerShell or Command Prompt:
+
+```powershell
+winget install --id Microsoft.OpenJDK.17 --accept-source-agreements --accept-package-agreements
+```
+
+Microsoft OpenJDK 17 is added to PATH automatically. If `java` is not found afterward, open a new terminal and run the verify step below.
+
+Alternatively, run the skill's install script (uses winget when available):
+
+```powershell
+& plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/install-dep.ps1 java
+```
+
 ### Verify
 
 ```bash
@@ -86,7 +102,7 @@ jadx --version
 
 ## Fernflower / Vineflower (optional, recommended)
 
-Fernflower is the JetBrains Java decompiler. It produces better output than jadx on complex Java constructs, lambdas, and generics. [Vineflower](https://github.com/Vineflower/vineflower) is the actively maintained community fork with published releases — prefer it over upstream Fernflower.
+Fernflower is the JetBrains Java decompiler. It produces better output than jadx on complex Java constructs, lambdas, and generics. [Vineflower](https://github.com/Vineflower/vineflower) is the actively maintained community fork with published releases; prefer it over upstream Fernflower.
 
 ### Option 1: Vineflower from GitHub Releases (recommended)
 
@@ -208,14 +224,76 @@ adb pull /data/app/com.example.app-xxxx/base.apk ./app.apk
 
 ---
 
+## Linux / macOS (bash)
+
+On Linux and macOS, use the `*.sh` scripts in `scripts/`. Tools must be on **PATH** before running the skill (or in standard fallback locations; see `check-deps.sh`).
+
+### Verify dependencies
+
+```bash
+bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/check-deps.sh
+```
+
+### Auto-install (optional)
+
+```bash
+bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/install-dep.sh jadx
+bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/install-dep.sh vineflower
+bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/install-dep.sh dex2jar
+```
+
+The install script detects the OS and package manager, installs without sudo when possible (downloads to `~/.local/share/`, symlinks in `~/.local/bin/`), or uses apt/dnf/pacman/brew when necessary.
+
+---
+
+## Windows (PowerShell)
+
+On Windows, use the `*.ps1` scripts in `scripts/`. Tools must be on **PATH** before running the skill (or in standard fallback locations; see `check-deps.ps1`).
+
+### Required PATH entries
+
+| Tool | What to add to PATH |
+|------|---------------------|
+| Java JDK 17+ | Java `bin` directory (often already on PATH after install) |
+| jadx | `jadx\bin` directory (contains `jadx.bat`) |
+| dex2jar (optional) | dex-tools root directory (contains `d2j-dex2jar.bat`) |
+
+For Vineflower, set an environment variable instead of PATH:
+
+```powershell
+$env:FERNFLOWER_JAR_PATH = 'C:\path\to\vineflower.jar'
+```
+
+### Verify dependencies
+
+```powershell
+& plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/check-deps.ps1
+```
+
+### Auto-install (optional)
+
+```powershell
+& plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/install-dep.ps1 jadx
+& plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/install-dep.ps1 vineflower
+& plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/install-dep.ps1 dex2jar
+```
+
+The install script uses `winget`, `scoop`, or `choco` when available, or downloads to `%USERPROFILE%\.local\share\`.
+
+### Cursor IDE
+
+This repository includes a project skill at `.cursor/skills/android-reverse-engineering/`. Invoke it via `@android-reverse-engineering` or natural-language triggers (e.g. "decompile this APK"). The skill reuses scripts and references under `plugins/android-reverse-engineering/skills/android-reverse-engineering/`; no duplication. Use the bash scripts on Linux/macOS and the PowerShell scripts on Windows.
+
+---
+
 ## Troubleshooting
 
 | Problem | Solution |
 |---|---|
 | `jadx: command not found` | Ensure the jadx `bin/` directory is in your `$PATH` |
-| `Error: Could not find or load main class` | Java is missing or wrong version — verify with `java -version` |
+| `Error: Could not find or load main class` | Java is missing or wrong version; verify with `java -version` |
 | jadx runs out of memory on large APKs | Increase heap: `jadx -Xmx4g -d output app.apk` or set `JAVA_OPTS="-Xmx4g"` |
 | Decompiled code has many `// Error` comments | Try `--show-bad-code` to see partial output, or use `--deobf` for obfuscated apps |
 | Fernflower hangs on a method | Use `-mpm=60` to set a 60-second timeout per method |
 | Fernflower JAR not found | Set `FERNFLOWER_JAR_PATH` env variable to the full path of the JAR |
-| dex2jar fails with `ZipException` | The APK may have a non-standard ZIP structure — try `jadx` instead |
+| dex2jar fails with `ZipException` | The APK may have a non-standard ZIP structure; try `jadx` instead |

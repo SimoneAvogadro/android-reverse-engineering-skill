@@ -1,4 +1,4 @@
-# decompile.ps1 — Decompile APK/XAPK/JAR/AAR using jadx, fernflower, or both
+# decompile.ps1: Decompile APK/XAPK/JAR/AAR using jadx, fernflower, or both
 param(
     [Alias('o')]
     [string]$Output,
@@ -48,7 +48,8 @@ Engines:
               fernflower   -> <output>/fernflower/
 
 Environment:
-  FERNFLOWER_JAR_PATH   Path to fernflower.jar or vineflower.jar
+  FERNFLOWER_JAR_PATH          Path to fernflower.jar or vineflower.jar
+  FERNFLOWER_TIMEOUT_SECONDS   Max seconds for Fernflower run (default: 900)
 
 Examples:
   .\decompile.ps1 app-release.apk
@@ -95,10 +96,12 @@ $xapkExtractedDir = $null
 $xapkApkFiles = @()
 
 if ($extLower -eq 'xapk') {
+    # Expand-Archive doesn't work on .xapk; use ZipFile
     $xapkExtractedDir = Join-Path $env:TEMP "xapk-extract-$(Get-Random)"
     Write-Host "=== Extracting XAPK archive ==="
     New-Item -ItemType Directory -Path $xapkExtractedDir -Force | Out-Null
-    Expand-Archive -Path $inputFileAbs -DestinationPath $xapkExtractedDir -Force
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    [System.IO.Compression.ZipFile]::ExtractToDirectory($inputFileAbs, $xapkExtractedDir)
 
     # Show manifest.json if present
     $manifestPath = Join-Path $xapkExtractedDir 'manifest.json'
@@ -151,13 +154,13 @@ function Find-Dex2Jar {
     return $null
 }
 
-# --- jadx decompilation ---
+# Returns 0 success, 1 hard failure, 2 partial success (exit non-zero but .java files produced)
 function Invoke-Jadx {
     param([string]$OutDir, [string]$FileAbs, [string]$FileExt)
 
     if (-not (Get-Command jadx -ErrorAction SilentlyContinue)) {
         Write-Host "Error: jadx is not installed or not in PATH." -ForegroundColor Red
-        return $false
+        return 1
     }
 
     $jadxArgs = @('-d', $OutDir)
@@ -168,89 +171,198 @@ function Invoke-Jadx {
 
     Write-Host "Running: jadx $($jadxArgs -join ' ')"
     & jadx @jadxArgs
+    $jadxStatus = $LASTEXITCODE
 
     $sourcesDir = Join-Path $OutDir 'sources'
+    $count = 0
     if (Test-Path $sourcesDir) {
-        $count = (Get-ChildItem -Path $sourcesDir -Recurse -Filter '*.java').Count
+        $count = (Get-ChildItem -Path $sourcesDir -Recurse -Filter '*.java' -File -ErrorAction SilentlyContinue).Count
         Write-Host "jadx output: $sourcesDir\"
         Write-Host "Java files decompiled by jadx: $count"
     }
-    return $true
+
+    if ($jadxStatus -eq 0) { return 0 }
+    if ($count -gt 0) {
+        Write-Host "Warning: jadx exited with status $jadxStatus after writing $count Java files; treating this as partial success." -ForegroundColor Yellow
+        return 2
+    }
+    Write-Host "Error: jadx failed with status $jadxStatus and produced no Java output." -ForegroundColor Red
+    return 1
 }
 
-# --- Fernflower decompilation ---
+function Invoke-JavaJarWithTimeout {
+    param(
+        [string]$JarPath,
+        [string[]]$Args,
+        [int]$TimeoutSeconds
+    )
+    $argList = @('-jar', $JarPath) + $Args
+    $escaped = $argList | ForEach-Object {
+        if ($_ -match '[\s"]') { '"' + ($_ -replace '"', '\"') + '"' } else { $_ }
+    }
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = 'java'
+    $psi.Arguments = $escaped -join ' '
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $proc = [System.Diagnostics.Process]::Start($psi)
+    $stdout = $proc.StandardOutput.ReadToEnd()
+    $stderr = $proc.StandardError.ReadToEnd()
+    $timedOut = -not $proc.WaitForExit($TimeoutSeconds * 1000)
+    if ($timedOut) {
+        try { $proc.Kill() } catch { }
+        if ($stdout) { Write-Host $stdout }
+        if ($stderr) { Write-Host $stderr }
+        return 124
+    }
+    if ($stdout) { Write-Host $stdout }
+    if ($stderr) { Write-Host $stderr }
+    return $proc.ExitCode
+}
+
+# Returns 0 success, 1 hard failure, 2 partial success
 function Invoke-Fernflower {
-    param([string]$OutDir, [string]$FileAbs, [string]$FileExt)
+    param([string]$OutDir, [string]$FileAbs, [string]$FileExt, [string]$BaseNameForJar)
 
     $ffJar = Find-FernflowerJar
     if (-not $ffJar) {
         Write-Host "Error: Fernflower/Vineflower JAR not found." -ForegroundColor Red
         Write-Host "Set FERNFLOWER_JAR_PATH or see references/setup-guide.md"
-        return $false
+        return 1
     }
 
     New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
 
     $jarToDecompile = $FileAbs
     $convertedJar = $null
+    $intermediateDir = Join-Path $OutDir 'intermediate'
+    $ffTimeoutSeconds = 900
+    if ($env:FERNFLOWER_TIMEOUT_SECONDS -match '^\d+$' -and [int]$env:FERNFLOWER_TIMEOUT_SECONDS -gt 0) {
+        $ffTimeoutSeconds = [int]$env:FERNFLOWER_TIMEOUT_SECONDS
+    }
 
-    # For APK/AAR, we need dex2jar first
     if ($FileExt -in @('apk', 'aar')) {
         $d2j = Find-Dex2Jar
         if (-not $d2j) {
             Write-Host "Error: dex2jar is required to use Fernflower on .$FileExt files." -ForegroundColor Red
             Write-Host "Install dex2jar - see references/setup-guide.md"
-            return $false
+            return 1
         }
 
         Write-Host "Converting $FileExt to JAR with dex2jar..."
-        $convertedJar = Join-Path $OutDir "$baseName-dex2jar.jar"
+        New-Item -ItemType Directory -Path $intermediateDir -Force | Out-Null
+        $jarBase = if ($BaseNameForJar) { $BaseNameForJar } else { $baseName }
+        $convertedJar = Join-Path $intermediateDir "$jarBase-dex2jar.jar"
         & $d2j -f -o $convertedJar $FileAbs 2>&1 | Write-Host
+        $d2jStatus = $LASTEXITCODE
         if (-not (Test-Path $convertedJar)) {
-            Write-Host "Error: dex2jar conversion failed." -ForegroundColor Red
-            return $false
+            Write-Host "Error: dex2jar conversion failed with status $d2jStatus." -ForegroundColor Red
+            return 1
+        }
+        if ($d2jStatus -ne 0) {
+            Write-Host "Warning: dex2jar exited with status $d2jStatus but produced $convertedJar; continuing." -ForegroundColor Yellow
         }
         $jarToDecompile = $convertedJar
     }
 
-    # Build fernflower args
     $ffArgs = @('-dgs=1', '-mpm=60')
     if ($Deobf) { $ffArgs += '-ren=1' }
     $ffArgs += $jarToDecompile
     $ffArgs += $OutDir
 
     Write-Host "Running: java -jar $ffJar $($ffArgs -join ' ')"
-    & java -jar $ffJar @ffArgs
+    Write-Host "Fernflower timeout: ${ffTimeoutSeconds}s (override with FERNFLOWER_TIMEOUT_SECONDS)"
+    $ffStatus = Invoke-JavaJarWithTimeout -JarPath $ffJar -Args $ffArgs -TimeoutSeconds $ffTimeoutSeconds
 
-    # Fernflower outputs a JAR containing .java files — extract it
+    $sourcesDir = Join-Path $OutDir 'sources'
     $resultJar = Join-Path $OutDir ([IO.Path]::GetFileName($jarToDecompile))
     if (Test-Path $resultJar) {
-        $sourcesDir = Join-Path $OutDir 'sources'
         New-Item -ItemType Directory -Path $sourcesDir -Force | Out-Null
-        Expand-Archive -Path $resultJar -DestinationPath $sourcesDir -Force
-        Remove-Item $resultJar -Force
-        $count = (Get-ChildItem -Path $sourcesDir -Recurse -Filter '*.java').Count
+        try {
+            Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction SilentlyContinue
+            [System.IO.Compression.ZipFile]::ExtractToDirectory($resultJar, $sourcesDir)
+            Remove-Item $resultJar -Force
+        } catch {
+            Write-Host "Warning: Fernflower result jar $resultJar could not be extracted; checking for direct folder output." -ForegroundColor Yellow
+        }
+    }
+
+    New-Item -ItemType Directory -Path $sourcesDir -Force | Out-Null
+    $count = (Get-ChildItem -Path $sourcesDir -Recurse -Filter '*.java' -File -ErrorAction SilentlyContinue).Count
+
+    # Vineflower may write sources directly into the destination folder tree
+    if ($count -eq 0) {
+        $directEntries = Get-ChildItem -Path $OutDir -Directory |
+            Where-Object { $_.Name -notin @('sources', 'intermediate') }
+        $directCount = 0
+        foreach ($entry in $directEntries) {
+            $directCount += (Get-ChildItem -Path $entry.FullName -Recurse -Filter '*.java' -File -ErrorAction SilentlyContinue).Count
+        }
+        if ($directCount -gt 0) {
+            foreach ($entry in $directEntries) {
+                Get-ChildItem -Path $entry.FullName -Recurse -File | ForEach-Object {
+                    $rel = $_.FullName.Substring($entry.FullName.Length).TrimStart('\')
+                    $dest = Join-Path $sourcesDir $rel
+                    $destDir = Split-Path $dest -Parent
+                    if (-not (Test-Path $destDir)) { New-Item -ItemType Directory -Path $destDir -Force | Out-Null }
+                    Move-Item -Path $_.FullName -Destination $dest -Force
+                }
+                if ((Get-ChildItem -Path $entry.FullName -Recurse -ErrorAction SilentlyContinue).Count -eq 0) {
+                    Remove-Item $entry.FullName -Recurse -Force -ErrorAction SilentlyContinue
+                }
+            }
+            $count = (Get-ChildItem -Path $sourcesDir -Recurse -Filter '*.java' -File -ErrorAction SilentlyContinue).Count
+        }
+    }
+
+    if ($count -gt 0) {
         Write-Host "Fernflower output: $sourcesDir\"
         Write-Host "Java files decompiled by Fernflower: $count"
+        if ($convertedJar -and (Test-Path $convertedJar)) {
+            Remove-Item $convertedJar -Force
+        }
+        if (Test-Path $intermediateDir) {
+            $remaining = Get-ChildItem -Path $intermediateDir -ErrorAction SilentlyContinue
+            if (-not $remaining) { Remove-Item $intermediateDir -Force -ErrorAction SilentlyContinue }
+        }
+        if ($ffStatus -ne 0) {
+            if ($ffStatus -eq 124) {
+                Write-Host "Warning: Fernflower/Vineflower exceeded timeout (${ffTimeoutSeconds}s) but wrote $count Java files; treating as partial success." -ForegroundColor Yellow
+            } else {
+                Write-Host "Warning: Fernflower/Vineflower exited with status $ffStatus after writing $count Java files; treating as partial success." -ForegroundColor Yellow
+            }
+            return 2
+        }
+        return 0
     }
 
-    # Clean up intermediate dex2jar output
-    if ($convertedJar -and (Test-Path $convertedJar -ErrorAction SilentlyContinue)) {
-        Remove-Item $convertedJar -Force
+    if ($convertedJar -and (Test-Path $convertedJar)) {
+        Write-Host "Error: Fernflower/Vineflower produced no Java output. Intermediate dex2jar artifact kept at $convertedJar" -ForegroundColor Red
+    } else {
+        Write-Host "Error: Fernflower/Vineflower produced no Java output." -ForegroundColor Red
     }
-    return $true
+    if ($ffStatus -eq 124) {
+        Write-Host "Error: Fernflower/Vineflower exceeded timeout (${ffTimeoutSeconds}s)." -ForegroundColor Red
+    } elseif ($ffStatus -ne 0) {
+        Write-Host "Error: Fernflower/Vineflower exited with status $ffStatus." -ForegroundColor Red
+    }
+    return 1
 }
 
-# --- Summary helper ---
 function Show-Structure {
     param([string]$SrcDir, [string]$Label)
     if (Test-Path $SrcDir) {
         Write-Host ""
         Write-Host "Top-level packages ($Label):"
-        Get-ChildItem -Path $SrcDir -Directory -Recurse -Depth 2 |
-            Select-Object -First 20 |
-            ForEach-Object { $_.FullName.Replace("$SrcDir\", '') } |
-            Sort-Object
+        $packages = Get-ChildItem -Path $SrcDir -Directory -Recurse -Depth 3 |
+            ForEach-Object { $_.FullName.Replace("$SrcDir\", '').Replace("$SrcDir/", '') } |
+            Sort-Object -Unique
+        if ($packages.Count -eq 0) {
+            Write-Host "(none)"
+        } else {
+            $packages | Select-Object -First 20 | ForEach-Object { Write-Host $_ }
+        }
     }
 }
 
@@ -266,19 +378,33 @@ function Invoke-DecompileSingle {
 
     switch ($Engine) {
         'jadx' {
-            Invoke-Jadx -OutDir $OutDir -FileAbs $FileAbs -FileExt $fileExt
+            $jadxStatus = Invoke-Jadx -OutDir $OutDir -FileAbs $FileAbs -FileExt $fileExt
             Show-Structure (Join-Path $OutDir 'sources') 'jadx'
+            if ($jadxStatus -eq 1) { return 1 }
+            if ($jadxStatus -eq 2) { Write-Host "jadx completed with warnings but produced usable output." }
         }
         'fernflower' {
-            Invoke-Fernflower -OutDir $OutDir -FileAbs $FileAbs -FileExt $fileExt
+            $ffBase = [IO.Path]::GetFileNameWithoutExtension($FileAbs)
+            $ffStatus = Invoke-Fernflower -OutDir $OutDir -FileAbs $FileAbs -FileExt $fileExt -BaseNameForJar $ffBase
             Show-Structure (Join-Path $OutDir 'sources') 'fernflower'
+            if ($ffStatus -eq 1) { return 1 }
+            if ($ffStatus -eq 2) { Write-Host "Fernflower completed with warnings but produced usable output." }
         }
         'both' {
             Write-Host "--- Pass 1: jadx ---"
-            Invoke-Jadx -OutDir (Join-Path $OutDir 'jadx') -FileAbs $FileAbs -FileExt $fileExt
+            $jadxStatus = Invoke-Jadx -OutDir (Join-Path $OutDir 'jadx') -FileAbs $FileAbs -FileExt $fileExt
+            if ($jadxStatus -eq 1) { return 1 }
+            if ($jadxStatus -eq 2) {
+                Write-Host "Continuing to Fernflower because jadx produced usable output despite warnings."
+            }
             Write-Host ""
             Write-Host "--- Pass 2: Fernflower ---"
-            Invoke-Fernflower -OutDir (Join-Path $OutDir 'fernflower') -FileAbs $FileAbs -FileExt $fileExt
+            $ffBase = [IO.Path]::GetFileNameWithoutExtension($FileAbs)
+            $ffStatus = Invoke-Fernflower -OutDir (Join-Path $OutDir 'fernflower') -FileAbs $FileAbs -FileExt $fileExt -BaseNameForJar $ffBase
+            if ($ffStatus -eq 1) { return 1 }
+            if ($ffStatus -eq 2) {
+                Write-Host "Continuing with Fernflower output because it produced usable sources despite warnings."
+            }
 
             Show-Structure (Join-Path $OutDir 'jadx\sources') 'jadx'
             Show-Structure (Join-Path $OutDir 'fernflower\sources') 'fernflower'
@@ -299,7 +425,7 @@ function Invoke-DecompileSingle {
 
             if (Test-Path $jadxSources) {
                 $jadxErrors = (Get-ChildItem -Path $jadxSources -Recurse -Filter '*.java' -File |
-                    Select-String -Pattern 'JADX WARNING|JADX WARN|JADX ERROR|Code decompiled incorrectly' -SimpleMatch -ErrorAction SilentlyContinue |
+                    Select-String -Pattern 'JADX WARNING|JADX WARN|JADX ERROR|Code decompiled incorrectly' -ErrorAction SilentlyContinue |
                     Select-Object -ExpandProperty Path -Unique).Count
                 Write-Host "jadx files with warnings/errors: $jadxErrors"
             }
@@ -307,6 +433,7 @@ function Invoke-DecompileSingle {
             Write-Host "Tip: compare specific classes between jadx/ and fernflower/ to pick the better output."
         }
     }
+    return 0
 }
 
 # --- Run ---
