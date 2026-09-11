@@ -33,8 +33,11 @@ TMP="$(mktemp -d -t apkfp.XXXXXX)"
 trap 'rm -rf "$TMP"' EXIT
 
 # Resolve to a list of APKs (handle XAPK = ZIP of APKs)
+# Lowercase via tr rather than ${INPUT,,}: the ,, expansion needs bash 4,
+# and macOS still ships bash 3.2 as /bin/bash.
 APKS=()
-case "${INPUT,,}" in
+INPUT_LC="$(printf '%s' "$INPUT" | tr '[:upper:]' '[:lower:]')"
+case "$INPUT_LC" in
   *.xapk|*.apks|*.apkm)
     unzip -q -o "$INPUT" -d "$TMP/xapk"
     while IFS= read -r p; do APKS+=("$p"); done < <(find "$TMP/xapk" -maxdepth 2 -type f -name '*.apk')
@@ -62,8 +65,11 @@ for apk in "${APKS[@]}"; do
   for dex in $(unzip -Z1 -- "$apk" 2>/dev/null | grep -E '^classes[0-9]*\.dex$' || true); do
     # DEX type descriptors look like "Lcom/foo/Bar;". Extract the inner
     # slash-separated FQN so callers can match e.g. 'io/ktor/' directly.
-    unzip -p -- "$apk" "$dex" 2>/dev/null \
-      | strings -n 8 \
+    # `strings` must be handed a real file. Apple's cctools strings skips the
+    # printable-run filter entirely when reading stdin and emits raw bytes
+    # instead, which turns the whole scan into noise.
+    unzip -p -- "$apk" "$dex" > "$TMP/dex.bin" 2>/dev/null || continue
+    strings -n 8 "$TMP/dex.bin" \
       | grep -oE 'L[a-z][a-zA-Z0-9_]*(/[a-zA-Z0-9_$]+)+;' \
       | sed -E 's/^L//; s/;$//' \
       >> "$DEX_STRINGS" || true
