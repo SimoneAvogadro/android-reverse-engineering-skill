@@ -353,7 +353,7 @@ print_structure() {
     echo "Top-level packages ($label):"
     while IFS= read -r pkg; do
       [[ -n "$pkg" ]] && packages+=("$pkg")
-    done < <(find "$src_dir" -mindepth 1 -maxdepth 3 -type d -printf '%P\n' | sort)
+    done < <(cd "$src_dir" && find . -mindepth 1 -maxdepth 3 -type d | sed 's#^\./##' | sort)
 
     local limit=${#packages[@]}
     if (( limit > 20 )); then
@@ -512,12 +512,28 @@ if [[ "$ext_lower" == "xapk" ]]; then
     echo
   fi
 
+  skipped_splits=()
   for apk_file in "${XAPK_APK_FILES[@]}"; do
     apk_name=$(basename "$apk_file" .apk)
+    # Config splits (ABI / density / language) carry no DEX; jadx fails on
+    # them with "No classes for decompile!", which under `set -e` would abort
+    # the loop and skip every remaining APK.
+    # grep -c (not -q) reads all input, so unzip never hits SIGPIPE under pipefail.
+    dex_count=$(unzip -Z1 "$apk_file" 2>/dev/null | grep -cE '^classes[0-9]*\.dex$' || true)
+    if [[ "${dex_count:-0}" -eq 0 ]]; then
+      skipped_splits+=("$apk_name.apk")
+      continue
+    fi
     echo
     echo "======================================================"
     decompile_single "$apk_file" "$OUTPUT_DIR/$apk_name" "$apk_name.apk"
   done
+
+  if [[ ${#skipped_splits[@]} -gt 0 ]]; then
+    echo
+    echo "Skipped split APKs without DEX code (resource/ABI only — native .so files, if any, live here):"
+    for s in "${skipped_splits[@]}"; do echo "  - $s"; done
+  fi
 
   # Cleanup extracted XAPK
   rm -rf "$XAPK_EXTRACTED_DIR"

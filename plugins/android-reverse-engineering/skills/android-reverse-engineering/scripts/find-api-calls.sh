@@ -251,8 +251,8 @@ if [[ "$SEARCH_ALL" == true || "$SEARCH_URLS" == true ]]; then
       | sort -u \
       | awk '
           { rest=$0; sub(/^https?:\/\//,"",rest)
-            host=rest; sub(/[/:].*/,"",host)
-            haspathport = (rest ~ /[/:]/)
+            host=rest; sub(/[:\/].*/,"",host)   # "\/" not "/": BSD awk ends the regex at a bare "/" even inside [...]
+            haspathport = (rest ~ /[:\/]/)
             if (host ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) { print; next }   # IPv4
             n = split(host, a, ".")
             if (n >= 3)      { print; next }                                 # sub.domain.tld
