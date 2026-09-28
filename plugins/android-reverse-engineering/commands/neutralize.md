@@ -78,7 +78,7 @@ If the output includes `XAPK_ORIGIN:<path>`, inform the user: "This is an XAPK (
 
 ### Step 5: Identify targets — Registry Scan
 
-The decoded directory contains smali bytecode. Use `registry-scan.py` to match against the SDK registry (29 SDKs, 123 entry points, 156 ad operations).
+The decoded directory contains smali bytecode. Use `registry-scan.py` to match against the SDK registry (33 SDKs, 201 entry points, 210 ad operations).
 
 **5a. Run registry scan:**
 

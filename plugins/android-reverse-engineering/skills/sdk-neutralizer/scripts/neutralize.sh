@@ -52,7 +52,7 @@ Options:
   --package <path>       Neutralize ALL methods in a smali package recursively.
                          Stubs every non-abstract, non-native, non-constructor
                          method. Can be specified multiple times.
-                         Example: --package guru/ads --package com/appsflyer
+                         Example: --package com/vendor/ads --package com/appsflyer
   --replay        Replay patches from a previous neutralize-manifest.json
   --save-manifest Save neutralize-manifest.json after patching (default)
   --no-save-manifest  Do not save neutralize-manifest.json

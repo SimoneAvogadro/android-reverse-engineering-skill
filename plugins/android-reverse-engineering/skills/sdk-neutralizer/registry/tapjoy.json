@@ -1,0 +1,156 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "tapjoy",
+  "display_name": "Tapjoy (Offerwall)",
+  "description": "Tapjoy offerwall / rewarded-content SDK (acquired by ironSource 2021, now part of Unity). Distributed standalone from the Tapjoy Maven repo (com.tapjoy:tapjoy-android-sdk); also pulled in by LevelPlay/AdMob/MAX Tapjoy adapters, which all go through Tapjoy.connect",
+  "vendor": "Tapjoy (Unity / ironSource)",
+  "category": "ads",
+  "known_versions": ["11.12.2", "12.11.1", "13.4.1", "14.8.0"],
+  "packages": [
+    "com.tapjoy",
+    "com.moat.analytics.mobile.tjy"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "obfuscated",
+    "internal_prefix": "short letter/letter+digit names in com.tapjoy.internal (dj, cl, h2, w2) and, since 13.x, in com.tapjoy itself (com.tapjoy.a .. com.tapjoy.r0)"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "com.tapjoy.Tapjoy",
+        "methods": [
+          { "name": "connect", "signature": "*", "stub": "return-false/0", "note": "Main SDK init — static boolean connect(Context,String[,Hashtable[,TJConnectListener]]), all 3 overloads return boolean in 11.x-14.x. Stub skips TapjoyConnectCore, TJSession auto-tracking and currency setup; TJConnectListener is never called back" },
+          { "name": "limitedConnect", "signature": "*", "stub": "return-false/0", "note": "static synchronized boolean limitedConnect(Context,String,TJConnectListener) — 12.x/13.x only (13.x already a deprecated no-op that fires onConnectFailure); removed in 14.x" }
+        ]
+      },
+      {
+        "class": "com.tapjoy.TapjoyConnectCore",
+        "methods": [
+          { "name": "requestTapjoyConnect", "signature": "*", "stub": "return-void", "note": "Internal connect request (static in 11.x-13.x, instance in 14.x, always void). Backstop in case Tapjoy.connect is bypassed" },
+          { "name": "requestLimitedTapjoyConnect", "signature": "*", "stub": "return-void", "note": "static void, 12.x only (limited/no-PII connect)" }
+        ]
+      }
+    ],
+    "ad_operations": [
+      {
+        "class": "com.tapjoy.TJPlacement",
+        "methods": [
+          { "name": "requestContent", "signature": "()V", "stub": "return-void", "note": "Load placement content. Trade-off: unstubbed, it already fires onRequestFailure('SDK not connected') when connect is stubbed; stubbing suppresses all TJPlacementListener callbacks" },
+          { "name": "showContent", "signature": "()V", "stub": "return-void", "note": "Show offerwall / placement content" },
+          { "name": "isContentReady", "signature": "()Z", "stub": "return-false/0", "note": "Always report no content" },
+          { "name": "isContentAvailable", "signature": "()Z", "stub": "return-false/0", "note": "Always report no content" },
+          { "name": "dismissContent", "signature": "()V", "stub": "return-void", "note": "static void" }
+        ]
+      },
+      {
+        "class": "com.tapjoy.Tapjoy",
+        "methods": [
+          { "name": "isConnected", "signature": "()Z", "stub": "return-false/0", "note": "static boolean" },
+          { "name": "trackPurchase", "signature": "*", "stub": "return-void", "note": "IAP tracking — every overload void (2 or 4 String args in 11.x-13.x; (String,double) etc. in 14.x)" },
+          { "name": "trackEvent", "signature": "*", "stub": "return-void", "note": "Custom event analytics — 9 void overloads in 11.x-13.x, removed in 14.x" }
+        ]
+      },
+      {
+        "class": "com.tapjoy.TJOfferwallDiscoverView",
+        "methods": [
+          { "name": "requestContent", "signature": "(Landroid/content/Context;Ljava/lang/String;)V", "stub": "return-void", "note": "Offerwall Discover (OWD) widget, 13.x+" }
+        ]
+      },
+      {
+        "class": "com.tapjoy.TapjoyPluginAPI",
+        "methods": [
+          { "name": "RequestOWDiscover", "signature": "*", "stub": "return-void", "note": "Unity/engine-plugin bridge for Offerwall Discover, 13.x+, both overloads void" },
+          { "name": "ShowOWDiscover", "signature": "(Landroid/app/Activity;)V", "stub": "return-void" }
+        ]
+      }
+    ],
+    "deep_patterns": []
+  },
+  "manifest_components": [
+    {
+      "type": "activity",
+      "class": "com.tapjoy.TJAdUnitActivity",
+      "action": "disable",
+      "note": "Fullscreen placement/offerwall activity (all versions)"
+    },
+    {
+      "type": "activity",
+      "class": "com.tapjoy.TJWebViewActivity",
+      "action": "disable",
+      "note": "WebView activity (13.x+)"
+    },
+    {
+      "type": "activity",
+      "class": "com.tapjoy.TJContentActivity",
+      "action": "disable",
+      "note": "Legacy content activity (11.x-13.x, removed in 14.x)"
+    },
+    {
+      "type": "activity",
+      "class": "com.tapjoy.mraid.view.ActionHandler",
+      "action": "disable",
+      "note": "MRAID action handler (11.x)"
+    },
+    {
+      "type": "activity",
+      "class": "com.tapjoy.mraid.view.Browser",
+      "action": "disable",
+      "note": "MRAID in-app browser (11.x)"
+    },
+    {
+      "type": "receiver",
+      "class": "com.tapjoy.InstallReferrerReceiver",
+      "action": "disable",
+      "note": "INSTALL_REFERRER broadcast receiver (11.x)"
+    },
+    {
+      "type": "receiver",
+      "class": "com.tapjoy.TapjoyReceiver",
+      "action": "disable",
+      "note": "Push/notification receiver (11.x)"
+    },
+    {
+      "type": "receiver",
+      "class": "com.tapjoy.GCMReceiver",
+      "action": "disable",
+      "note": "GCM push receiver (11.x, declared by the app when push is used)"
+    },
+    {
+      "type": "service",
+      "class": "com.tapjoy.internal.AppUsageForegroundService",
+      "action": "disable",
+      "note": "App-usage (usage-stats) foreground service in 14.x — not in the AAR manifest, present only if the app declares it"
+    }
+  ],
+  "protected_patterns": [
+    {
+      "pattern": "*.getPlacement()*",
+      "reason": "Tapjoy.getPlacement returns a TJPlacement that app code dereferences (requestContent/showContent) — null causes NPE. Works fine without connect"
+    },
+    {
+      "pattern": "*.getLimitedPlacement()*",
+      "reason": "Returns TJPlacement (12.x/13.x) — null causes NPE"
+    },
+    {
+      "pattern": "*.createPlacement()*",
+      "reason": "TJPlacementManager.createPlacement / TapjoyNative.createPlacement (JNI bridge) return the placement object — null causes NPE"
+    },
+    {
+      "pattern": "*.getPrivacyPolicy()*",
+      "reason": "Apps call Tapjoy.getPrivacyPolicy().setUserConsent()/setSubjectToGDPR() before connect — null causes NPE"
+    },
+    {
+      "pattern": "*.getInstance()*",
+      "reason": "TapjoyConnectCore/TJPrivacyPolicy singletons — dereferenced by the SDK's own graceful not-connected paths and by app consent code"
+    },
+    {
+      "pattern": "*.getUserTags()*",
+      "reason": "Returns Set<String> that app code may iterate — null causes NPE"
+    },
+    {
+      "pattern": "*.getActivity()*",
+      "reason": "Returns Activity reference — null causes NPE"
+    }
+  ]
+}

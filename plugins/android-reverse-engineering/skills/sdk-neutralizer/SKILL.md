@@ -109,7 +109,7 @@ Ask the user which depth level to use. Default to depth 1 unless they request mo
 
 #### Phase 3a — Registry Scan (Known SDKs)
 
-Run `registry-scan.py` to match the decoded APK against the SDK registry (29 SDKs, 123 entry points, 156 ad operations, 30 deep patterns).
+Run `registry-scan.py` to match the decoded APK against the SDK registry (33 SDKs, 201 entry points, 210 ad operations, 30 deep patterns).
 
 **Action**: Run registry scan.
 
@@ -220,7 +220,7 @@ Present the complete summary:
 |---|---|---|---|---|---|
 | Google AdMob | ads | Registry | 1 | 2 methods | 3 components |
 | Firebase Analytics | analytics | Registry | 1 | 8 methods | 7 components |
-| guru/ads/fusion | ads | Discovery | - | 3 methods | 0 components |
+| com/vendor/adwrapper | ads | Discovery | - | 3 methods | 0 components |
 | ... | | | | | |
 
 **Ads vs Trackers distinction**: Always present ads and trackers separately — they have different implications (revenue impact vs privacy).

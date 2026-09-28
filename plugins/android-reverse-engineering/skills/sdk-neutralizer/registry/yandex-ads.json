@@ -1,0 +1,375 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "yandex-ads",
+  "display_name": "Yandex Mobile Ads",
+  "description": "Yandex Mobile Ads SDK (Yandex Advertising Network), Maven com.yandex.android:mobileads. The 8.x release renamed MobileAds to YandexAds and MobileAdsInitializeProvider to YandexAdsInitializeProvider, replaced the *RequestConfiguration load API with loadAd(AdRequest, listener), and added Kotlin suspend overloads of loadAd returning Object.",
+  "vendor": "Yandex",
+  "category": "ads",
+  "known_versions": [
+    "8.5.0",
+    "7.18.7",
+    "6.4.1",
+    "5.10.0"
+  ],
+  "packages": [
+    "com.yandex.mobile.ads",
+    "com.monetization.ads",
+    "yads"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "obfuscated",
+    "internal_prefix": "yads.* with 1-5 char names (e.g. yads.tt5) in 7.x/8.x; com.yandex.mobile.ads.impl.* in 5.x/6.x. Names change on every release"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "com.yandex.mobile.ads.common.YandexAds",
+        "methods": [
+          {
+            "name": "initialize",
+            "signature": "(Landroid/content/Context;Lcom/yandex/mobile/ads/common/InitializationListener;)V",
+            "stub": "return-void",
+            "note": "8.x init (public static final void). InitializationListener never fires. Loaders create the SDK core singleton themselves, so this stub alone does not stop ad loading. Keep the ad_operations too"
+          }
+        ]
+      },
+      {
+        "class": "com.yandex.mobile.ads.common.MobileAds",
+        "methods": [
+          {
+            "name": "initialize",
+            "signature": "(Landroid/content/Context;Lcom/yandex/mobile/ads/common/InitializationListener;)V",
+            "stub": "return-void",
+            "note": "5.x-7.x init (public static void), the only overload. Same caveat as YandexAds.initialize"
+          }
+        ]
+      },
+      {
+        "class": "com.yandex.mobile.ads.core.initializer.YandexAdsInitializeProvider",
+        "methods": [
+          {
+            "name": "onCreate",
+            "signature": "()Z",
+            "stub": "return-false/0",
+            "note": "8.x auto-init ContentProvider. onCreate launches a startup coroutine before Application.onCreate. A false return is harmless for a provider. Backs up the manifest disable"
+          }
+        ]
+      },
+      {
+        "class": "com.yandex.mobile.ads.core.initializer.MobileAdsInitializeProvider",
+        "methods": [
+          {
+            "name": "onCreate",
+            "signature": "()Z",
+            "stub": "return-false/0",
+            "note": "5.x-7.x name of the auto-init ContentProvider"
+          }
+        ]
+      }
+    ],
+    "ad_operations": [
+      {
+        "class": "com.yandex.mobile.ads.interstitial.InterstitialAdLoader",
+        "methods": [
+          {
+            "name": "loadAd",
+            "signature": "(Lcom/yandex/mobile/ads/common/AdRequest;Lcom/yandex/mobile/ads/interstitial/InterstitialAdLoadListener;)V",
+            "stub": "return-void",
+            "note": "8.x callback overload"
+          },
+          {
+            "name": "loadAd",
+            "signature": "(Lcom/yandex/mobile/ads/common/AdRequestConfiguration;)V",
+            "stub": "return-void",
+            "note": "6.x-7.x (listener set via setAdLoadListener). Do NOT stub the 8.x suspend overload (AdRequest, Continuation)Ljava/lang/Object;, see protected_patterns"
+          }
+        ]
+      },
+      {
+        "class": "com.yandex.mobile.ads.rewarded.RewardedAdLoader",
+        "methods": [
+          {
+            "name": "loadAd",
+            "signature": "(Lcom/yandex/mobile/ads/common/AdRequest;Lcom/yandex/mobile/ads/rewarded/RewardedAdLoadListener;)V",
+            "stub": "return-void",
+            "note": "8.x callback overload"
+          },
+          {
+            "name": "loadAd",
+            "signature": "(Lcom/yandex/mobile/ads/common/AdRequestConfiguration;)V",
+            "stub": "return-void",
+            "note": "6.x-7.x. The 8.x suspend overload returns Object, so leave it unstubbed"
+          }
+        ]
+      },
+      {
+        "class": "com.yandex.mobile.ads.appopenad.AppOpenAdLoader",
+        "methods": [
+          {
+            "name": "loadAd",
+            "signature": "(Lcom/yandex/mobile/ads/common/AdRequest;Lcom/yandex/mobile/ads/appopenad/AppOpenAdLoadListener;)V",
+            "stub": "return-void",
+            "note": "8.x callback overload"
+          },
+          {
+            "name": "loadAd",
+            "signature": "(Lcom/yandex/mobile/ads/common/AdRequestConfiguration;)V",
+            "stub": "return-void",
+            "note": "5.x (package-private) to 7.x. The 8.x suspend overload returns Object, so leave it unstubbed"
+          }
+        ]
+      },
+      {
+        "class": "com.yandex.mobile.ads.interstitial.InterstitialAd",
+        "methods": [
+          {
+            "name": "loadAd",
+            "signature": "(Lcom/yandex/mobile/ads/common/AdRequest;)V",
+            "stub": "return-void",
+            "note": "Legacy concrete class in 5.x and earlier. From 6.x InterstitialAd is an interface (abstract methods, skipped by the patcher). The implementation is an obfuscated yads class"
+          },
+          {
+            "name": "show",
+            "signature": "()V",
+            "stub": "return-void",
+            "note": "Legacy 5.x show(). In 6.x+ show(Activity) is abstract, so it is a no-op here"
+          },
+          {
+            "name": "isLoaded",
+            "signature": "()Z",
+            "stub": "return-false/0",
+            "note": "Legacy 5.x only"
+          }
+        ]
+      },
+      {
+        "class": "com.yandex.mobile.ads.rewarded.RewardedAd",
+        "methods": [
+          {
+            "name": "loadAd",
+            "signature": "(Lcom/yandex/mobile/ads/common/AdRequest;)V",
+            "stub": "return-void",
+            "note": "Legacy concrete class in 5.x and earlier. An interface from 6.x"
+          },
+          {
+            "name": "show",
+            "signature": "()V",
+            "stub": "return-void",
+            "note": "Legacy 5.x only"
+          },
+          {
+            "name": "isLoaded",
+            "signature": "()Z",
+            "stub": "return-false/0",
+            "note": "Legacy 5.x only"
+          }
+        ]
+      },
+      {
+        "class": "com.yandex.mobile.ads.banner.BannerAdView",
+        "methods": [
+          {
+            "name": "loadAd",
+            "signature": "*",
+            "stub": "return-void",
+            "note": "loadAd(AdRequest)V is the only overload in 5.x-8.x"
+          }
+        ]
+      },
+      {
+        "class": "com.yandex.mobile.ads.nativeads.NativeAdLoader",
+        "methods": [
+          {
+            "name": "loadAd",
+            "signature": "(Lcom/yandex/mobile/ads/common/AdRequest;Lcom/yandex/mobile/ads/nativeads/NativeAdLoadListener;)V",
+            "stub": "return-void",
+            "note": "8.x"
+          },
+          {
+            "name": "loadAd",
+            "signature": "(Lcom/yandex/mobile/ads/common/AdRequest;Lcom/yandex/mobile/ads/nativeads/NativeAdOptions;Lcom/yandex/mobile/ads/nativeads/NativeAdLoadListener;)V",
+            "stub": "return-void",
+            "note": "8.x"
+          },
+          {
+            "name": "loadAd",
+            "signature": "(Lcom/yandex/mobile/ads/nativeads/NativeAdRequestConfiguration;)V",
+            "stub": "return-void",
+            "note": "5.x-7.x. The two 8.x suspend overloads return Object, so leave them unstubbed"
+          }
+        ]
+      },
+      {
+        "class": "com.yandex.mobile.ads.nativeads.NativeBulkAdLoader",
+        "methods": [
+          {
+            "name": "loadAds",
+            "signature": "(Lcom/yandex/mobile/ads/common/AdRequest;ILcom/yandex/mobile/ads/nativeads/NativeBulkAdLoadListener;)V",
+            "stub": "return-void",
+            "note": "8.x"
+          },
+          {
+            "name": "loadAds",
+            "signature": "(Lcom/yandex/mobile/ads/common/AdRequest;ILcom/yandex/mobile/ads/nativeads/NativeAdOptions;Lcom/yandex/mobile/ads/nativeads/NativeBulkAdLoadListener;)V",
+            "stub": "return-void",
+            "note": "8.x"
+          },
+          {
+            "name": "loadAds",
+            "signature": "(Lcom/yandex/mobile/ads/nativeads/NativeAdRequestConfiguration;I)V",
+            "stub": "return-void",
+            "note": "5.x-7.x. The two 8.x suspend overloads return Object, so leave them unstubbed"
+          }
+        ]
+      },
+      {
+        "class": "com.yandex.mobile.ads.nativeads.SliderAdLoader",
+        "methods": [
+          {
+            "name": "loadAd",
+            "signature": "(Lcom/yandex/mobile/ads/common/AdRequest;Lcom/yandex/mobile/ads/nativeads/SliderAdLoadListener;)V",
+            "stub": "return-void",
+            "note": "8.x"
+          },
+          {
+            "name": "loadAd",
+            "signature": "(Lcom/yandex/mobile/ads/common/AdRequest;Lcom/yandex/mobile/ads/nativeads/NativeAdOptions;Lcom/yandex/mobile/ads/nativeads/SliderAdLoadListener;)V",
+            "stub": "return-void",
+            "note": "8.x. The two 8.x suspend overloads return Object, so leave them unstubbed"
+          },
+          {
+            "name": "loadSlider",
+            "signature": "*",
+            "stub": "return-void",
+            "note": "5.x-7.x loadSlider(NativeAdRequestConfiguration)V"
+          }
+        ]
+      },
+      {
+        "class": "com.yandex.mobile.ads.feed.FeedAd",
+        "methods": [
+          {
+            "name": "preloadAd",
+            "signature": "*",
+            "stub": "return-void",
+            "note": "Feed ads (7.x-8.x), ()V"
+          }
+        ]
+      },
+      {
+        "class": "com.yandex.mobile.ads.instream.InstreamAdLoader",
+        "methods": [
+          {
+            "name": "loadAd",
+            "signature": "(Lcom/yandex/mobile/ads/instream/InstreamAdRequest;Lcom/yandex/mobile/ads/instream/InstreamAdLoadListener;)V",
+            "stub": "return-void",
+            "note": "8.x in-stream video ads. The suspend overload returns Object, so leave it unstubbed"
+          },
+          {
+            "name": "loadInstreamAd",
+            "signature": "*",
+            "stub": "return-void",
+            "note": "5.x-7.x loadInstreamAd(Context, InstreamAdRequestConfiguration)V"
+          }
+        ]
+      },
+      {
+        "class": "com.yandex.mobile.ads.instream.adbreak.InstreamAdBreakLoader",
+        "methods": [
+          {
+            "name": "loadAd",
+            "signature": "(Lcom/yandex/mobile/ads/instream/adbreak/InstreamAdBreakRequest;Lcom/yandex/mobile/ads/instream/adbreak/InstreamAdBreakLoadListener;)V",
+            "stub": "return-void",
+            "note": "8.x. The suspend overload returns Object, so leave it unstubbed"
+          }
+        ]
+      },
+      {
+        "class": "com.yandex.mobile.ads.retailmedia.RetailMediaLoader",
+        "methods": [
+          {
+            "name": "loadAd",
+            "signature": "(Ljava/lang/String;Ljava/lang/String;Lcom/yandex/mobile/ads/retailmedia/RetailMediaLoadListener;)V",
+            "stub": "return-void",
+            "note": "8.x retail media"
+          },
+          {
+            "name": "loadAd",
+            "signature": "(Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Lcom/yandex/mobile/ads/retailmedia/RetailMediaLoadListener;)V",
+            "stub": "return-void"
+          },
+          {
+            "name": "loadAd",
+            "signature": "(Ljava/lang/String;Ljava/lang/String;Lcom/yandex/mobile/ads/nativeads/NativeAdOptions;Lcom/yandex/mobile/ads/retailmedia/RetailMediaLoadListener;)V",
+            "stub": "return-void"
+          },
+          {
+            "name": "loadAd",
+            "signature": "(Ljava/lang/String;Ljava/lang/String;Lcom/yandex/mobile/ads/nativeads/NativeAdOptions;Ljava/util/List;Lcom/yandex/mobile/ads/retailmedia/RetailMediaLoadListener;)V",
+            "stub": "return-void",
+            "note": "The two suspend overloads return Object, so leave them unstubbed"
+          }
+        ]
+      },
+      {
+        "class": "com.yandex.mobile.ads.common.BidderTokenLoader",
+        "methods": [
+          {
+            "name": "loadBidderToken",
+            "signature": "*",
+            "stub": "return-void",
+            "note": "All versions return void. It is static in 5.x-7.x and an instance method in 8.x. Mediation bidding (e.g. through another network's adapter) gets no Yandex token, and the listener is never called"
+          }
+        ]
+      }
+    ],
+    "deep_patterns": []
+  },
+  "manifest_components": [
+    {
+      "type": "provider",
+      "class": "com.yandex.mobile.ads.core.initializer.YandexAdsInitializeProvider",
+      "action": "disable",
+      "note": "8.x auto-init ContentProvider, which runs before Application.onCreate"
+    },
+    {
+      "type": "provider",
+      "class": "com.yandex.mobile.ads.core.initializer.MobileAdsInitializeProvider",
+      "action": "disable",
+      "note": "5.x-7.x name of the auto-init ContentProvider"
+    },
+    {
+      "type": "activity",
+      "class": "com.yandex.mobile.ads.common.AdActivity",
+      "action": "disable",
+      "note": "Fullscreen ad activity for interstitial, rewarded and app-open ads, all versions"
+    }
+  ],
+  "protected_patterns": [
+    {
+      "pattern": "Lcom/yandex/mobile/ads/**/*Loader;->load*(..Lkotlin/coroutines/Continuation;)Ljava/lang/Object;",
+      "reason": "8.x Kotlin suspend overloads of loadAd/loadAds. They return InterstitialAdLoadResult, NativeAdLoadResult and similar as Object. A return-null stub hands app code a null non-null sealed result, which causes an NPE or a NoWhenBranchMatchedException. They use a separate internal path, not the callback overload. Stub only the explicit void signatures listed in ad_operations"
+    },
+    {
+      "pattern": "*.getLibraryVersion()*",
+      "reason": "Static String getter on YandexAds/MobileAds that apps log or compare. Null can cause an NPE"
+    },
+    {
+      "pattern": "*.getAdVolumeController()*",
+      "reason": "8.x YandexAds returns a singleton object that app code calls methods on"
+    },
+    {
+      "pattern": "*.getVideoController()*",
+      "reason": "BannerAdView returns a VideoController that apps attach listeners to. Null causes an NPE"
+    },
+    {
+      "pattern": "com.yandex.mobile.ads.banner.{BannerAdSize,AdSize}.{sticky,inline,fixed,closableSticky,stickySize,inlineSize,fixedSize,flexibleSize}",
+      "reason": "Static factories (8.x sticky/inline/fixed/closableSticky; 6.x-7.x *Size; 5.x AdSize.stickySize/flexibleSize) whose result goes to BannerAdView.setAdSize. Null can cause an NPE in app or SDK code"
+    },
+    {
+      "pattern": "com.yandex.mobile.ads.common.AdRequest$Builder.build",
+      "reason": "Returns an AdRequest that app code passes to load methods. Null can crash before the stubbed load is reached"
+    }
+  ]
+}

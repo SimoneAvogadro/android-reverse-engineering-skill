@@ -22,7 +22,7 @@ A Claude Code Skill (plugin) for Android reverse engineering, API extraction, an
 - `plugins/android-reverse-engineering/skills/tracker-analysis/` — Tracker/analytics SDK detection skill (4-phase workflow, references, find-trackers.sh)
 - `plugins/android-reverse-engineering/skills/ad-analysis/` — Advertising SDK detection skill (3-phase workflow, references, find-ads.sh)
 - `plugins/android-reverse-engineering/skills/sdk-neutralizer/` — SDK neutralization skill (6-phase workflow, references, decode-apk.sh, neutralize.sh, registry-scan.py, merge-splits.sh, rebuild-apk.sh)
-- `plugins/android-reverse-engineering/skills/sdk-neutralizer/registry/` — SDK registry (29 JSON files defining neutralization targets, manifest components, protected patterns)
+- `plugins/android-reverse-engineering/skills/sdk-neutralizer/registry/` — SDK registry (33 JSON files defining neutralization targets, manifest components, protected patterns)
 
 ## Key Scripts
 
@@ -87,8 +87,8 @@ bash rebuild-apk.sh <decoded-dir> [--auto-keystore|--debug-key|--keystore <file>
 
 SDK registry under `plugins/android-reverse-engineering/skills/sdk-neutralizer/registry/`:
 
-- 29 SDK JSON files + `_schema.json` schema definition
-- Covers: AdMob, Unity Ads, IronSource, AppLovin, Meta AN, Vungle, InMobi, Chartboost, Pangle, BidMachine, Smaato, PubNative, Ogury, Fyber, Amazon APS, Facebook, Firebase Analytics, Firebase Crashlytics, AppsFlyer, Adjust, Braze, CleverTap, Guru Fusion, Mintegral, Mixpanel, MobileFuse, Moloco, PubMatic, TradPlus
+- 33 SDK JSON files + `_schema.json` schema definition
+- Covers: AdMob, Unity Ads, IronSource, AppLovin, Meta AN, Vungle, InMobi, Chartboost, Pangle, BidMachine, Smaato, PubNative, Ogury, Fyber, Amazon APS, Facebook, Firebase Analytics, Firebase Crashlytics, AppsFlyer, Adjust, Braze, CleverTap, Guru Fusion, Mintegral, Mixpanel, MobileFuse, Moloco, PubMatic, TradPlus, Tapjoy, Yandex Ads, Google Tag Manager, AppMetrica
 - Each JSON defines: packages, entry_points, ad_operations, deep_patterns, manifest_components, protected_patterns
 - `registry-scan.py` consumes these JSONs to generate neutralization targets
 

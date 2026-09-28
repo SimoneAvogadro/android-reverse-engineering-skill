@@ -1,0 +1,231 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "appmetrica",
+  "display_name": "AppMetrica (Yandex)",
+  "description": "Yandex AppMetrica analytics SDK: current io.appmetrica.analytics (6.x-8.x, artifact io.appmetrica.analytics:analytics) and legacy com.yandex.metrica (YandexMetrica, <=5.x, artifact com.yandex.android:mobmetricalib). Every public reporting call except the ID getters checks that activate() ran and throws ValidationException (an IllegalArgumentException) if it did not. So when activate is stubbed, the whole void facade must be stubbed too, or the app crashes on its first reportEvent. That is why the full facade is listed in entry_points. The Yandex Mobile Ads SDK depends on this SDK and calls AppMetrica.getReporter/getLibraryVersion/requestStartupParams (see protected_patterns).",
+  "vendor": "Yandex",
+  "category": "analytics",
+  "known_versions": ["8.5.1", "7.14.3", "6.0.0", "5.3.8", "4.2.0", "3.21.1"],
+  "packages": [
+    "io.appmetrica.analytics",
+    "com.yandex.metrica"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "obfuscated",
+    "internal_prefix": "io.appmetrica.analytics.impl.* / com.yandex.metrica.impl.ob.* (1-3 char class names, e.g. impl.y1, impl.Bd, impl.ob.Tf); names change between releases"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "io.appmetrica.analytics.AppMetrica",
+        "methods": [
+          { "name": "activate", "signature": "(Landroid/content/Context;Lio/appmetrica/analytics/AppMetricaConfig;)V", "stub": "return-void", "note": "Main SDK init (static void)" },
+          { "name": "activateReporter", "signature": "(Landroid/content/Context;Lio/appmetrica/analytics/ReporterConfig;)V", "stub": "return-void", "note": "Activates a secondary reporter for another API key (the Yandex Mobile Ads SDK uses it)" },
+          { "name": "reportEvent", "signature": "*", "stub": "return-void", "note": "4 overloads in 6.x-7.x, 5 in 8.x (String / String,String / String,Map / AppMetricaEvent), all void; throw if not activated" },
+          { "name": "reportError", "signature": "*", "stub": "return-void", "note": "3 overloads, all void; throws if not activated" },
+          { "name": "reportUnhandledException", "signature": "(Ljava/lang/Throwable;)V", "stub": "return-void" },
+          { "name": "reportAnr", "signature": "(Ljava/util/Map;)V", "stub": "return-void", "note": "8.x" },
+          { "name": "reportAppOpen", "signature": "*", "stub": "return-void", "note": "Activity / String / Intent overloads, all void" },
+          { "name": "reportReferralUrl", "signature": "(Ljava/lang/String;)V", "stub": "return-void", "note": "6.x-7.x only (removed in 8.x)" },
+          { "name": "reportUserProfile", "signature": "(Lio/appmetrica/analytics/profile/UserProfile;)V", "stub": "return-void" },
+          { "name": "reportRevenue", "signature": "(Lio/appmetrica/analytics/Revenue;)V", "stub": "return-void" },
+          { "name": "reportAdRevenue", "signature": "(Lio/appmetrica/analytics/AdRevenue;)V", "stub": "return-void" },
+          { "name": "reportECommerce", "signature": "(Lio/appmetrica/analytics/ecommerce/ECommerceEvent;)V", "stub": "return-void" },
+          { "name": "reportExternalAttribution", "signature": "(Lio/appmetrica/analytics/ExternalAttribution;)V", "stub": "return-void", "note": "Forwards AppsFlyer/Adjust/etc. attribution to AppMetrica (8.x)" },
+          { "name": "reportExternalAdRevenue", "signature": "([Ljava/lang/Object;)V", "stub": "return-void", "note": "8.x" },
+          { "name": "sendEventsBuffer", "signature": "()V", "stub": "return-void" },
+          { "name": "resumeSession", "signature": "(Landroid/app/Activity;)V", "stub": "return-void" },
+          { "name": "pauseSession", "signature": "(Landroid/app/Activity;)V", "stub": "return-void" },
+          { "name": "enableActivityAutoTracking", "signature": "(Landroid/app/Application;)V", "stub": "return-void" },
+          { "name": "setUserProfileID", "signature": "(Ljava/lang/String;)V", "stub": "return-void" },
+          { "name": "setLocation", "signature": "(Landroid/location/Location;)V", "stub": "return-void", "note": "Pushes a Location into the SDK" },
+          { "name": "putAppEnvironmentValue", "signature": "(Ljava/lang/String;Ljava/lang/String;)V", "stub": "return-void" },
+          { "name": "putErrorEnvironmentValue", "signature": "(Ljava/lang/String;Ljava/lang/String;)V", "stub": "return-void" },
+          { "name": "clearAppEnvironment", "signature": "()V", "stub": "return-void" },
+          { "name": "clearErrorEnvironment", "signature": "()V", "stub": "return-void", "note": "8.x" },
+          { "name": "requestDeferredDeeplink", "signature": "(Lio/appmetrica/analytics/DeferredDeeplinkListener;)V", "stub": "return-void", "note": "Callback never fires once stubbed; unstubbed it throws if not activated" },
+          { "name": "requestDeferredDeeplinkParameters", "signature": "(Lio/appmetrica/analytics/DeferredDeeplinkParametersListener;)V", "stub": "return-void", "note": "Callback never fires once stubbed; unstubbed it throws if not activated" },
+          { "name": "registerAnrListener", "signature": "(Lio/appmetrica/analytics/AnrListener;)V", "stub": "return-void" },
+          { "name": "initWebViewReporting", "signature": "(Landroid/webkit/WebView;)V", "stub": "return-void", "note": "Would add the AppMetrica / AppMetricaInitializer JS interfaces to the WebView" }
+        ]
+      },
+      {
+        "class": "io.appmetrica.analytics.AppMetricaLibraryAdapter",
+        "methods": [
+          { "name": "activate", "signature": "*", "stub": "return-void", "note": "Library-mode init used by third-party SDKs such as Yandex Mobile Ads; (Context) and (Context, AppMetricaLibraryAdapterConfig), both void (7.x+)" },
+          { "name": "reportEvent", "signature": "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V", "stub": "return-void", "note": "sender/event/payload system event" },
+          { "name": "subscribeForAutoCollectedData", "signature": "(Landroid/content/Context;Ljava/lang/String;)V", "stub": "return-void" }
+        ]
+      },
+      {
+        "class": "io.appmetrica.analytics.ModulesFacade",
+        "methods": [
+          { "name": "reportEvent", "signature": "(Lio/appmetrica/analytics/ModuleEvent;)V", "stub": "return-void", "note": "Data sink for AppMetrica modules and adapters; throws ValidationException if not activated" },
+          { "name": "reportAdRevenue", "signature": "*", "stub": "return-void", "note": "(AdRevenue) and (AdRevenue, Boolean), 7.x+" },
+          { "name": "reportExternalAttribution", "signature": "(ILjava/lang/String;)V", "stub": "return-void", "note": "7.x+" },
+          { "name": "setSessionExtra", "signature": "(Ljava/lang/String;[B)V", "stub": "return-void" },
+          { "name": "sendEventsBuffer", "signature": "()V", "stub": "return-void" },
+          { "name": "subscribeForAutoCollectedData", "signature": "(Landroid/content/Context;Ljava/lang/String;)V", "stub": "return-void", "note": "7.x+" },
+          { "name": "isActivatedForApp", "signature": "()Z", "stub": "return-false/0", "note": "Returns false, which is also its real value when activate is stubbed; modules use it to skip reporting" }
+        ]
+      },
+      {
+        "class": "com.yandex.metrica.YandexMetrica",
+        "methods": [
+          { "name": "activate", "signature": "(Landroid/content/Context;Lcom/yandex/metrica/YandexMetricaConfig;)V", "stub": "return-void", "note": "Legacy main SDK init (static void)" },
+          { "name": "activateReporter", "signature": "(Landroid/content/Context;Lcom/yandex/metrica/ReporterConfig;)V", "stub": "return-void" },
+          { "name": "reportEvent", "signature": "*", "stub": "return-void", "note": "3 overloads, all void; throw if not activated" },
+          { "name": "reportError", "signature": "*", "stub": "return-void", "note": "3 overloads, all void" },
+          { "name": "reportUnhandledException", "signature": "(Ljava/lang/Throwable;)V", "stub": "return-void" },
+          { "name": "reportNativeCrash", "signature": "(Ljava/lang/String;)V", "stub": "return-void", "note": "Deprecated" },
+          { "name": "reportAppOpen", "signature": "*", "stub": "return-void", "note": "Activity / String / Intent overloads, all void" },
+          { "name": "reportReferralUrl", "signature": "(Ljava/lang/String;)V", "stub": "return-void" },
+          { "name": "reportUserProfile", "signature": "(Lcom/yandex/metrica/profile/UserProfile;)V", "stub": "return-void" },
+          { "name": "reportRevenue", "signature": "(Lcom/yandex/metrica/Revenue;)V", "stub": "return-void" },
+          { "name": "reportAdRevenue", "signature": "(Lcom/yandex/metrica/AdRevenue;)V", "stub": "return-void", "note": "4.x+" },
+          { "name": "reportECommerce", "signature": "(Lcom/yandex/metrica/ecommerce/ECommerceEvent;)V", "stub": "return-void" },
+          { "name": "sendEventsBuffer", "signature": "()V", "stub": "return-void" },
+          { "name": "resumeSession", "signature": "(Landroid/app/Activity;)V", "stub": "return-void" },
+          { "name": "pauseSession", "signature": "(Landroid/app/Activity;)V", "stub": "return-void" },
+          { "name": "enableActivityAutoTracking", "signature": "(Landroid/app/Application;)V", "stub": "return-void" },
+          { "name": "setUserProfileID", "signature": "(Ljava/lang/String;)V", "stub": "return-void" },
+          { "name": "setLocation", "signature": "(Landroid/location/Location;)V", "stub": "return-void" },
+          { "name": "putErrorEnvironmentValue", "signature": "(Ljava/lang/String;Ljava/lang/String;)V", "stub": "return-void" },
+          { "name": "requestDeferredDeeplink", "signature": "(Lcom/yandex/metrica/DeferredDeeplinkListener;)V", "stub": "return-void" },
+          { "name": "requestDeferredDeeplinkParameters", "signature": "(Lcom/yandex/metrica/DeferredDeeplinkParametersListener;)V", "stub": "return-void" },
+          { "name": "requestAppMetricaDeviceID", "signature": "(Lcom/yandex/metrica/AppMetricaDeviceIDListener;)V", "stub": "return-void", "note": "Legacy device-ID request; checks activation, so it must be stubbed along with activate; the callback never fires" },
+          { "name": "initWebViewReporting", "signature": "(Landroid/webkit/WebView;)V", "stub": "return-void" },
+          { "name": "registerReferrerBroadcastReceivers", "signature": "([Landroid/content/BroadcastReceiver;)V", "stub": "return-void", "note": "3.x only" }
+        ]
+      },
+      {
+        "class": "com.yandex.metrica.ModulesFacade",
+        "methods": [
+          { "name": "reportEvent", "signature": "*", "stub": "return-void", "note": "(int,String,String,Map) and (int,String,String,Map,Map), both void; 5.x" },
+          { "name": "setSessionExtra", "signature": "(Ljava/lang/String;[B)V", "stub": "return-void" },
+          { "name": "sendEventsBuffer", "signature": "()V", "stub": "return-void" },
+          { "name": "isActivatedForApp", "signature": "()Z", "stub": "return-false/0" }
+        ]
+      }
+    ],
+    "ad_operations": [
+      {
+        "class": "io.appmetrica.analytics.AppMetrica",
+        "methods": [
+          { "name": "getDeviceId", "signature": "(Landroid/content/Context;)Ljava/lang/String;", "stub": "return-null", "note": "@Nullable by contract; it is already null until the first startup request completes. The Yandex Mobile Ads SDK reads it" },
+          { "name": "getUuid", "signature": "(Landroid/content/Context;)Ljava/lang/String;", "stub": "return-null", "note": "@Nullable by contract; the Yandex Mobile Ads SDK reads it" }
+        ]
+      },
+      {
+        "class": "io.appmetrica.analytics.internal.js.AppMetricaJsInterface",
+        "methods": [
+          { "name": "reportEvent", "signature": "(Ljava/lang/String;Ljava/lang/String;)V", "stub": "return-void", "note": "@JavascriptInterface bridge (WebView -> AppMetrica)" }
+        ]
+      },
+      {
+        "class": "io.appmetrica.analytics.internal.js.AppMetricaInitializerJsInterface",
+        "methods": [
+          { "name": "init", "signature": "(Ljava/lang/String;)V", "stub": "return-void", "note": "@JavascriptInterface; 7.x+" }
+        ]
+      },
+      {
+        "class": "com.yandex.metrica.AppMetricaJsInterface",
+        "methods": [
+          { "name": "reportEvent", "signature": "(Ljava/lang/String;Ljava/lang/String;)V", "stub": "return-void", "note": "Legacy @JavascriptInterface bridge" }
+        ]
+      },
+      {
+        "class": "com.yandex.metrica.AppMetricaInitializerJsInterface",
+        "methods": [
+          { "name": "init", "signature": "(Ljava/lang/String;)V", "stub": "return-void", "note": "Legacy @JavascriptInterface" }
+        ]
+      }
+    ],
+    "deep_patterns": []
+  },
+  "manifest_components": [
+    {
+      "type": "service",
+      "class": "io.appmetrica.analytics.internal.AppMetricaService",
+      "action": "disable",
+      "note": "Core service that stores and sends events (runs in the :AppMetrica process in 6.x, the main process in 7.x-8.x). All client reporters, including getReporter() reporters, reach it over IPC via bindService; the bind call is wrapped in try/catch, so disabling it is safe"
+    },
+    {
+      "type": "provider",
+      "class": "io.appmetrica.analytics.internal.PreloadInfoContentProvider",
+      "action": "disable",
+      "note": "Exported provider (<pkg>.appmetrica.preloadinfo.retail) that receives preinstall/clids attribution from OEM/retail apps. It is not an auto-init; the SDK disables it itself after activation, and the latch that reads it is null-safe"
+    },
+    {
+      "type": "service",
+      "class": "com.yandex.metrica.MetricaService",
+      "action": "disable",
+      "note": "Legacy core service (runs in the :Metrica process)"
+    },
+    {
+      "type": "provider",
+      "class": "com.yandex.metrica.PreloadInfoContentProvider",
+      "action": "disable",
+      "note": "Legacy exported preinstall/clids provider (5.x manifest)"
+    },
+    {
+      "type": "service",
+      "class": "com.yandex.metrica.ConfigurationService",
+      "action": "disable",
+      "note": "Legacy 3.x-4.x configuration service (:Metrica)"
+    },
+    {
+      "type": "service",
+      "class": "com.yandex.metrica.ConfigurationJobService",
+      "action": "disable",
+      "note": "Legacy 3.x-4.x JobScheduler service (:Metrica)"
+    },
+    {
+      "type": "receiver",
+      "class": "com.yandex.metrica.ConfigurationServiceReceiver",
+      "action": "disable",
+      "note": "Legacy 3.x receiver (action com.yandex.metrica.configuration.service.PLC)"
+    },
+    {
+      "type": "receiver",
+      "class": "com.yandex.metrica.MetricaEventHandler",
+      "action": "disable",
+      "note": "Legacy 3.x INSTALL_REFERRER receiver"
+    }
+  ],
+  "protected_patterns": [
+    {
+      "pattern": "*.getReporter()*",
+      "reason": "Returns a @NonNull IReporter. The Yandex Mobile Ads SDK wraps it (AppMetrica.getReporter -> IReporter.reportEvent/reportError/reportAnr), so null would cause an NPE. Its traffic is cut off by disabling AppMetricaService instead"
+    },
+    {
+      "pattern": "*.getModuleReporter()*",
+      "reason": "ModulesFacade.getModuleReporter returns a @NonNull IModuleReporter; null would cause an NPE in callers"
+    },
+    {
+      "pattern": "*.getPluginExtension()*",
+      "reason": "Returns a @NonNull AppMetricaPlugins / YandexMetricaPlugins used by the Flutter/Unity/React Native plugins; null would cause an NPE"
+    },
+    {
+      "pattern": "*.getLibraryVersion()*",
+      "reason": "Returns a @NonNull constant version String; the Yandex Mobile Ads SDK calls it in 3 places, so null would cause an NPE"
+    },
+    {
+      "pattern": "*.getLibraryApiLevel()*",
+      "reason": "Constant int used for version gating; 0 could change caller behaviour"
+    },
+    {
+      "pattern": "*.requestStartupParams()*",
+      "reason": "Callback-based and does not check activation. The Yandex Mobile Ads SDK awaits the callback inside suspendCancellableCoroutine, so a stub that never fires the callback could leave that coroutine suspended"
+    },
+    {
+      "pattern": "*.setDataSendingEnabled()*",
+      "reason": "Privacy opt-out switch (the Yandex Mobile Ads SDK calls setDataSendingEnabled(false) without consent). Leave it working; it can only reduce collection"
+    },
+    {
+      "pattern": "*.setStatisticsSending()*",
+      "reason": "Legacy opt-out switch (YandexMetrica.setStatisticsSending(Context, boolean)). Leave it working"
+    }
+  ]
+}

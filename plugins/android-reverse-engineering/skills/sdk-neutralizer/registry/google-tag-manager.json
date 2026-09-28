@@ -1,0 +1,203 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "google-tag-manager",
+  "display_name": "Google Tag Manager",
+  "description": "Google Tag Manager for Android. v5 (play-services-tagmanager + -api) runs on top of Firebase Analytics: the measurement runtime reflectively calls TagManagerService.initialize(Context) on the first logged event, and the container ships as assets/containers/GTM-*.json. v4 (play-services-tagmanager-v4-impl) is the standalone TagManager/DataLayer/ContainerHolder API. Legacy v3 (com.google.tagmanager, version 3.02) is the pre-Play-services SDK. Every overload targeted here returns void. Object-returning APIs (getInstance, loadContainer*, getDataLayer, openContainer, getContainer) are deliberately left alone because callers dereference them.",
+  "vendor": "Google",
+  "category": "analytics",
+  "known_versions": ["18.3.0", "18.1.1", "17.0.1", "16.0.8", "11.8.0", "3.02"],
+  "packages": [
+    "com.google.android.gms.tagmanager",
+    "com.google.tagmanager"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "obfuscated",
+    "internal_prefix": "zz"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "com.google.android.gms.tagmanager.TagManagerService",
+        "methods": [
+          {
+            "name": "initialize",
+            "signature": "(Landroid/content/Context;)V",
+            "stub": "return-void",
+            "note": "GTM v5 bootstrap (public static void, @Keep). Firebase Analytics (measurement internal) invokes it by reflection on the first event and catches any exception. It loads the 'com.google.android.gms.tagmanager' dynamite module and calls TagManagerApiImpl.initialize. Stubbing it keeps the v5 runtime from ever starting."
+          }
+        ]
+      },
+      {
+        "class": "com.google.android.gms.tagmanager.DataLayer",
+        "methods": [
+          {
+            "name": "push",
+            "signature": "*",
+            "stub": "return-void",
+            "note": "GTM v4. Both overloads return void: push(Ljava/util/Map;)V and push(Ljava/lang/String;Ljava/lang/Object;)V. push(Map) is the single funnel for every event: app pushes, pushEvent, the container's own 'gtm.load' and persisted data-layer replay. With it stubbed no tag ever fires. The stub also skips the CountDownLatch await in the original body."
+          },
+          {
+            "name": "pushEvent",
+            "signature": "(Ljava/lang/String;Ljava/util/Map;)V",
+            "stub": "return-void",
+            "note": "GTM v4 event push (void). Normally it just delegates to push(Map); stubbed as a safety net."
+          }
+        ]
+      },
+      {
+        "class": "com.google.tagmanager.DataLayer",
+        "methods": [
+          {
+            "name": "push",
+            "signature": "*",
+            "stub": "return-void",
+            "note": "Legacy GTM v3 (3.02). Both overloads return void: push(Ljava/util/Map;)V and push(Ljava/lang/Object;Ljava/lang/Object;)V. This is the only event entry point."
+          }
+        ]
+      }
+    ],
+    "ad_operations": [
+      {
+        "class": "com.google.android.gms.tagmanager.TagManager",
+        "methods": [
+          {
+            "name": "dispatch",
+            "signature": "()V",
+            "stub": "return-void",
+            "note": "GTM v4 manual flush of queued hits (void)."
+          }
+        ]
+      },
+      {
+        "class": "com.google.android.gms.tagmanager.TagManagerApiImpl",
+        "methods": [
+          {
+            "name": "initialize",
+            "signature": "*",
+            "stub": "return-void",
+            "note": "GTM v5 runtime init inside the bundled dynamite module (void, but its binder parameter types are obfuscated and change across versions). DynamiteModule uses PREFER_HIGHEST_OR_REMOTE_VERSION, so this local copy can be bypassed by a newer module in Play services. Treat it as a safety net only; TagManagerService.initialize is the primary target."
+          },
+          {
+            "name": "previewIntent",
+            "signature": "*",
+            "stub": "return-void",
+            "note": "GTM v5 preview-mode handling (void)"
+          },
+          {
+            "name": "preview",
+            "signature": "(Landroid/content/Intent;Lcom/google/android/gms/dynamic/IObjectWrapper;)V",
+            "stub": "return-void",
+            "note": "GTM v5 preview (void)"
+          }
+        ]
+      },
+      {
+        "class": "com.google.tagmanager.Container",
+        "methods": [
+          {
+            "name": "evaluateTags",
+            "signature": "(Ljava/lang/String;)V",
+            "stub": "return-void",
+            "note": "Legacy v3, package-private. TagManager.refreshTagsInAllContainers calls it on every data-layer event, and it is the only tag-firing path."
+          },
+          {
+            "name": "refresh",
+            "signature": "()V",
+            "stub": "return-void",
+            "note": "Legacy v3 network container refresh (public synchronized void)"
+          }
+        ]
+      }
+    ],
+    "deep_patterns": []
+  },
+  "manifest_components": [
+    {
+      "type": "service",
+      "class": "com.google.android.gms.tagmanager.TagManagerService",
+      "action": "disable",
+      "note": "GTM v5. Declared by the play-services-tagmanager-api AAR manifest with android:enabled=\"true\" and exported=\"false\". onBind hosts TagManagerServiceProviderImpl from the dynamite module."
+    },
+    {
+      "type": "activity",
+      "class": "com.google.android.gms.tagmanager.TagManagerPreviewActivity",
+      "action": "disable",
+      "note": "GTM v5 preview deep link. Declared by the play-services-tagmanager-api AAR, exported=\"true\", with a VIEW/BROWSABLE intent filter on scheme tagmanager.c.<applicationId>."
+    },
+    {
+      "type": "activity",
+      "class": "com.google.android.gms.tagmanager.PreviewActivity",
+      "action": "disable",
+      "note": "GTM v4 preview deep link. The app declares it by hand (the v4-impl AAR manifest is empty)."
+    },
+    {
+      "type": "receiver",
+      "class": "com.google.android.gms.tagmanager.InstallReferrerReceiver",
+      "action": "disable",
+      "note": "GTM v4 install-referrer receiver, declared by the app. Extends com.google.android.gms.analytics.CampaignTrackingReceiver."
+    },
+    {
+      "type": "service",
+      "class": "com.google.android.gms.tagmanager.InstallReferrerService",
+      "action": "disable",
+      "note": "GTM v4 install-referrer service, declared by the app. Extends com.google.android.gms.analytics.CampaignTrackingService."
+    },
+    {
+      "type": "activity",
+      "class": "com.google.tagmanager.PreviewActivity",
+      "action": "disable",
+      "note": "Legacy GTM v3 preview deep link (app-declared)"
+    },
+    {
+      "type": "receiver",
+      "class": "com.google.tagmanager.InstallReferrerReceiver",
+      "action": "disable",
+      "note": "Legacy GTM v3 install-referrer receiver (app-declared)"
+    },
+    {
+      "type": "service",
+      "class": "com.google.tagmanager.InstallReferrerService",
+      "action": "disable",
+      "note": "Legacy GTM v3 install-referrer service (app-declared)"
+    }
+  ],
+  "protected_patterns": [
+    {
+      "pattern": "*.getInstance()*",
+      "reason": "TagManager.getInstance(Context) (v3/v4) is a singleton accessor. A null return makes every later call (getDataLayer, loadContainer*) throw an NPE in app code."
+    },
+    {
+      "pattern": "*.loadContainerPreferNonDefault(*)*",
+      "reason": "Returns PendingResult<ContainerHolder>. Apps chain setResultCallback()/await() on it, so a null return is an NPE. A stubbed loader never resolves the result."
+    },
+    {
+      "pattern": "*.loadContainerPreferFresh(*)*",
+      "reason": "Returns PendingResult<ContainerHolder>, and callers dereference it. Null means an NPE."
+    },
+    {
+      "pattern": "*.loadContainerDefaultOnly(*)*",
+      "reason": "Returns PendingResult<ContainerHolder>, and callers dereference it. Null means an NPE."
+    },
+    {
+      "pattern": "*.getDataLayer()*",
+      "reason": "Returns the DataLayer that app code immediately calls push() on. Null means an NPE."
+    },
+    {
+      "pattern": "*.getContainer(*)*",
+      "reason": "ContainerHolder.getContainer() (v4) and TagManager.getContainer(String) (v3) return a Container that apps read config values from. Null means an NPE."
+    },
+    {
+      "pattern": "*.openContainer(*)*",
+      "reason": "Legacy v3 TagManager.openContainer returns a Container and ContainerOpener.openContainer returns a ContainerFuture. Null means an NPE."
+    },
+    {
+      "pattern": "*.getString(*)*",
+      "reason": "Container.getString, getBoolean, getLong and getDouble serve remote config values to app logic. A null String crashes callers. Leave them alone: once push is stubbed they return defaults anyway."
+    },
+    {
+      "pattern": "*.onCreate(*)*",
+      "reason": "TagManagerPreviewActivity and PreviewActivity override Activity.onCreate. A stub skips super.onCreate and throws SuperNotCalledException. Disable the activity in the manifest instead."
+    }
+  ]
+}
