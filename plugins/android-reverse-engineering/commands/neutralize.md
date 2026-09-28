@@ -50,7 +50,7 @@ bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/check-neutralize-deps.
 
 (Passing the file makes APKEditor required for XAPK/APKM/APKS input.)
 
-On Windows without bash, `check-neutralize-deps.ps1`, `decode-apk.ps1` and `rebuild-apk.ps1` (PowerShell 5.1) are available; `neutralize.sh` and `registry-scan.py` still require bash + python3 (WSL or Git Bash) for now.
+On Windows without bash, `check-neutralize-deps.ps1`, `decode-apk.ps1`, `detect-protection.ps1` and `rebuild-apk.ps1` (PowerShell 5.1) are available; `neutralize.sh` and `registry-scan.py` still require bash + python3 (WSL or Git Bash) for now.
 
 If any `INSTALL_REQUIRED:` lines appear, install all dependencies at once (java, apktool, apkeditor, build-tools, zip). `build-tools` is Google's Android SDK Build-Tools (zipalign + apksigner), licensed under the Android Software Development Kit License Agreement (https://developer.android.com/studio/terms): show the user this link and ask for explicit acceptance **before** passing `--accept-android-sdk-license`. Never accept it on the user's behalf:
 
@@ -75,6 +75,21 @@ Verify the decoded directory contains `smali/` and `AndroidManifest.xml` (the sc
 If the output includes `MERGED_FROM_SPLITS:<path>`, inform the user: "This is a split APK bundle. Its splits were merged into a single APK with APKEditor before decoding; the rebuild will produce one APK installable with `adb install`." Relay any `OBB_WARNING:` lines (OBB files must be copied to the device separately).
 
 The legacy `--keep-splits` flag (decode the base only, rebuild an XAPK) is deprecated: do not use it unless the user explicitly asks for XAPK output.
+
+### Step 4b: Protection check (detection only)
+
+`decode-apk.sh` ends with a protection check (`detect-protection.sh`, informational, exit code unchanged). Re-run it on a decoded directory with:
+
+```bash
+bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/detect-protection.sh "${DECODED_DIR}"
+```
+
+Read `PROTECTION_DETECTED:<id>:<category>:<confidence>:<evidence>` and `PROTECTION_SUMMARY:<none|integrity|license|hardener|signature-vm>`, then set expectations **before** spending time on targets and a rebuild:
+- `signature-vm` (Google Play PairIP with signature check / encrypted VM) or `hardener` (commercial packer / RASP): a rebuilt, re-signed APK **will not run**. Offer to stop, or to continue for the SDK report only.
+- `license` (PairIP license check, LVL): the rebuilt APK may stop at a "Get this app from Play" screen. Ask whether to continue.
+- `integrity` (Play Integrity / SafetyNet client, often bundled by SDKs): the app starts; note it in the report.
+
+Never try to remove, disable or work around a protection: only report it.
 
 ### Step 5: Identify targets — Registry Scan
 

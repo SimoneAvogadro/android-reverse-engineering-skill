@@ -121,6 +121,17 @@ Rebuilding the APK invalidates the original signature. Consequences:
 
 This is acceptable for enterprise sideloading where the modified APK is distributed via MDM.
 
+### Anti-tamper, integrity and licensing protection
+
+Some apps are wrapped by a protection that makes any re-signed build unusable, whatever was patched:
+
+- **Google Play automatic protection (PairIP)** — `com.pairip.application.Application` replaces the app's Application class. The *license-check* variant (`com.pairip.licensecheck.*`) asks Play for a license and shows a "Get this app from Play" screen when it fails. The *signature-check + VM* variant adds `com.pairip.SignatureCheck` (compares the signing certificate) and `com.pairip.VMRunner` + `libpairipcore.so` (part of the code is encrypted bytecode run by a native VM): a re-signed APK does not start.
+- **Commercial packers / RASP** (DexGuard, Promon SHIELD, Appdome, Verimatrix, Arxan, SecNeo/Bangcle, Jiagu, Tencent Legu, Ijiami, DexProtector, AppSealing, LIAPP, ...) — encrypt the real code and check the APK signature in native code; a re-signed APK does not start, and packed SDK code is invisible to the registry scan.
+- **LVL** (`com.google.android.vending.licensing`) — app-specific reaction to a failed license check.
+- **Play Integrity / SafetyNet clients** — server-side verdicts; the app starts, online features may be refused. Often bundled by SDKs.
+
+`detect-protection.sh` (run by `decode-apk.sh`) reports these right after decoding. Its signatures come from [APKiD](https://github.com/rednaga/APKiD)'s YARA rules (file names, class names) and from PairIP-protected apps; APKiD itself scans the raw APK and knows many more protectors (ELF section and byte-pattern rules the decoded tree cannot express), so run it when a finer answer is needed. The neutralizer never removes or bypasses a protection: it only tells the user, before a rebuild, that the result will not run.
+
 ## Legal Disclaimer
 
 SDK neutralization for enterprise deployment is supported by:

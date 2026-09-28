@@ -21,7 +21,7 @@ A Claude Code Skill (plugin) for Android reverse engineering, API extraction, an
 - `plugins/android-reverse-engineering/skills/android-reverse-engineering/` — Core RE skill (5-phase workflow, references, scripts)
 - `plugins/android-reverse-engineering/skills/tracker-analysis/` — Tracker/analytics SDK detection skill (4-phase workflow, references, find-trackers.sh)
 - `plugins/android-reverse-engineering/skills/ad-analysis/` — Advertising SDK detection skill (3-phase workflow, references, find-ads.sh)
-- `plugins/android-reverse-engineering/skills/sdk-neutralizer/` — SDK neutralization skill (6-phase workflow, references, decode-apk.sh/.ps1, neutralize.sh, registry-scan.py, rebuild-apk.sh/.ps1, check-neutralize-deps.sh/.ps1)
+- `plugins/android-reverse-engineering/skills/sdk-neutralizer/` — SDK neutralization skill (6-phase workflow, references, decode-apk.sh/.ps1, detect-protection.sh/.ps1, neutralize.sh, registry-scan.py, rebuild-apk.sh/.ps1, check-neutralize-deps.sh/.ps1)
 - `plugins/android-reverse-engineering/skills/sdk-neutralizer/registry/` — SDK registry (33 JSON files defining neutralization targets, manifest components, protected patterns)
 
 ## Key Scripts
@@ -71,6 +71,12 @@ bash check-neutralize-deps.sh [<input>]
 # (writes .merged-from-splits.json; --keep-splits = deprecated base-only decode + .xapk-origin/)
 bash decode-apk.sh <file.apk|file.xapk|file.apkm|file.apks|dir> [-o <decoded-dir>] [--keep-splits]
 
+# Detect anti-tamper / integrity / licensing protection (PairIP, LVL, packers/RASP from
+# APKiD signatures) — detection only, never bypassed; run automatically by decode-apk,
+# always exits 0; PROTECTION_DETECTED:<id>:<category>:<confidence>:<evidence> +
+# PROTECTION_SUMMARY:<none|integrity|license|hardener|signature-vm>
+bash detect-protection.sh <decoded-dir>
+
 # Scan decoded APK against SDK registry (generates targets-file + manifest-components-file)
 # Depth: 1=entry_points only, 2=+ad_operations, 3=+deep_patterns
 python3 registry-scan.py <decoded-dir> --registry <registry-path> --depth 1|2|3 --category ads|trackers|all --output-dir <decoded-dir>
@@ -88,7 +94,7 @@ bash neutralize.sh <decoded-dir> [--ads|--trackers|--all] [--dry-run] [--no-back
 bash rebuild-apk.sh <decoded-dir> [--auto-keystore|--debug-key|--keystore <file>] [-o <output>] [--no-sign] [--zipalign|--no-zipalign]
 ```
 
-Windows: `check-neutralize-deps.ps1`, `decode-apk.ps1` and `rebuild-apk.ps1` mirror the bash scripts (PowerShell 5.1, `-Output`/`-KeepSplits`/`-AutoKeystore`...); `neutralize.sh` and `registry-scan.py` still require bash + python3 (WSL/Git Bash) for now. `APKEDITOR_JAR` overrides the APKEditor JAR location on both platforms.
+Windows: `check-neutralize-deps.ps1`, `decode-apk.ps1`, `detect-protection.ps1` and `rebuild-apk.ps1` mirror the bash scripts (PowerShell 5.1, `-Output`/`-KeepSplits`/`-AutoKeystore`...); `neutralize.sh` and `registry-scan.py` still require bash + python3 (WSL/Git Bash) for now. `APKEDITOR_JAR` overrides the APKEditor JAR location on both platforms.
 
 SDK registry under `plugins/android-reverse-engineering/skills/sdk-neutralizer/registry/`:
 

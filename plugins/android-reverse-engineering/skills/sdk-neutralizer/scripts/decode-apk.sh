@@ -75,6 +75,8 @@ Output:
   OBB_WARNING:<name>                                    (OBB files are never merged)
   DEPRECATION_WARNING:keep-splits                       (--keep-splits only)
   XAPK_ORIGIN:<path>                                    (--keep-splits only)
+  PROTECTION_DETECTED:... / PROTECTION_SUMMARY:<kind>   (detect-protection.sh, run
+                                                        after a successful decode)
 All paths are absolute. The output directory is replaced only after a successful
 decode (the new tree is decoded next to it, then swapped in).
 EOF
@@ -617,4 +619,15 @@ trap - EXIT
 echo
 echo "Decoded successfully: $OUTPUT_ABS"
 echo "DECODED_DIR:$OUTPUT_ABS"
+
+# Protection check (detection only, informational): warn now, before any time
+# is spent on a rebuild, when a re-signed APK of this app will not run. It never
+# changes the decode result or exit code.
+DETECT_PROTECTION="$SCRIPT_DIR/detect-protection.sh"
+if [[ -f "$DETECT_PROTECTION" ]]; then
+  echo
+  # From the decoded dir: the working directory used above has been deleted
+  (cd "$OUTPUT_ABS" && bash "$DETECT_PROTECTION" "$OUTPUT_ABS") ||
+    echo "[WARN] Protection check failed; run detect-protection.sh manually."
+fi
 exit 0

@@ -53,7 +53,7 @@ A Claude Code skill that decompiles Android APK/XAPK/JAR/AAR files, **extracts H
 - [APKEditor](https://github.com/REAndroid/APKEditor) (required for XAPK/APKM/APKS input) — merges split APKs into one APK before decoding; `install-dep.sh apkeditor` installs a pinned, SHA-256-verified release (`APKEDITOR_JAR` overrides its location)
 - zip (only for the deprecated XAPK output)
 
-On Windows, `check-neutralize-deps.ps1`, `decode-apk.ps1` and `rebuild-apk.ps1` are available; `neutralize.sh` requires bash (WSL/Git Bash) for now.
+On Windows, `check-neutralize-deps.ps1`, `decode-apk.ps1`, `detect-protection.ps1` and `rebuild-apk.ps1` are available; `neutralize.sh` requires bash (WSL/Git Bash) for now.
 
 See `plugins/android-reverse-engineering/skills/android-reverse-engineering/references/setup-guide.md` for detailed installation instructions.
 
@@ -213,6 +213,9 @@ bash plugins/android-reverse-engineering/skills/sdk-neutralizer/scripts/neutrali
 bash plugins/android-reverse-engineering/skills/sdk-neutralizer/scripts/rebuild-apk.sh app-decoded --auto-keystore
 # → produces a single app-decoded-neutralized.apk (adb install)
 
+# Anti-tamper / integrity / licensing protection check (detection only; decode-apk runs it)
+bash plugins/android-reverse-engineering/skills/sdk-neutralizer/scripts/detect-protection.sh app-decoded
+
 # Replay previous patches after re-decoding
 bash plugins/android-reverse-engineering/skills/sdk-neutralizer/scripts/neutralize.sh app-decoded --replay
 ```
@@ -299,6 +302,8 @@ android-reverse-engineering-skill/
 │       │           ├── check-neutralize-deps.ps1
 │       │           ├── decode-apk.sh
 │       │           ├── decode-apk.ps1
+│       │           ├── detect-protection.sh
+│       │           ├── detect-protection.ps1
 │       │           ├── neutralize.sh
 │       │           ├── rebuild-apk.sh
 │       │           ├── rebuild-apk.ps1

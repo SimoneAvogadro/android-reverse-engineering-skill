@@ -42,7 +42,7 @@ This skill requires an APK file or a split APK bundle (XAPK/APKM/APKS). It will 
 
 Required tools: `java 17+`, `apktool`, `unzip`, and Android SDK Build-Tools (`apksigner` + `zipalign`; build-tools 35+ for `zipalign -P 16`), plus [APKEditor](https://github.com/REAndroid/APKEditor) for XAPK/APKM/APKS input. zipalign is **required** whenever the APK has stored native libraries with `extractNativeLibs="false"` (the rebuild fails without it). `jarsigner` is only a v1-signature fallback for apps targeting SDK < 30.
 
-**Windows**: `check-neutralize-deps.ps1`, `decode-apk.ps1` and `rebuild-apk.ps1` (PowerShell 5.1+) mirror the bash scripts, with PowerShell-style flags (`-Output`, `-KeepSplits`, `-AutoKeystore`, ...). `neutralize.sh` and `registry-scan.py` still require bash and python3 (WSL or Git Bash) for now. Example:
+**Windows**: `check-neutralize-deps.ps1`, `decode-apk.ps1`, `detect-protection.ps1` and `rebuild-apk.ps1` (PowerShell 5.1+) mirror the bash scripts, with PowerShell-style flags (`-Output`, `-KeepSplits`, `-AutoKeystore`, ...). `neutralize.sh` and `registry-scan.py` still require bash and python3 (WSL or Git Bash) for now. Example:
 
 ```
 powershell -NoProfile -ExecutionPolicy Bypass -File <plugin-root>\skills\sdk-neutralizer\scripts\decode-apk.ps1 C:\apks\app.xapk -Output C:\work\app-decoded
@@ -104,6 +104,28 @@ For split bundle input, it also outputs:
 If the input is a split bundle, tell the user its splits were merged into a single APK, installable with plain `adb install`.
 
 **Deprecated**: `--keep-splits` decodes only the base APK and keeps the splits in `.xapk-origin/` so that Phase 5 reassembles an XAPK (outputs `DEPRECATION_WARNING:keep-splits` and `XAPK_ORIGIN:<path>`). Split-only resources become `@null` and the app may crash. Use it only if the user explicitly asks for XAPK output; it will be removed.
+
+### Phase 2b: Protection Check (detection only)
+
+Apps wrapped by an anti-tamper, integrity or licensing protection do not run once rebuilt and re-signed: the protection checks the signing certificate, the Play install or its own encrypted code at startup. Find this out **now**, not after a rebuild and a device test.
+
+`decode-apk.sh` runs the check automatically after a successful decode (its exit code is unchanged). To run it again on a decoded directory:
+
+```bash
+bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/detect-protection.sh <decoded-dir>
+```
+
+Parse:
+- `PROTECTION_DETECTED:<id>:<category>:<high|medium|low>:<evidence,...>` — one line per protection found
+- `PROTECTION_SUMMARY:<none|integrity|license|hardener|signature-vm>` — the most severe category
+
+Set expectations with the user **before** Phase 3, according to the summary:
+- **`signature-vm`** (Google Play PairIP with `SignatureCheck` / `VMRunner` / `libpairipcore.so`) or **`hardener`** (commercial packer or RASP: DexGuard, Promon, Appdome, Verimatrix, Arxan, SecNeo/Bangcle, Jiagu, Legu, ...): tell the user that a rebuilt, re-signed APK **will not run**. Neutralization can still produce a report of the SDKs and what would be patched, but the rebuilt APK will not be usable. Ask whether to stop, or continue for the report only.
+- **`license`** (PairIP license check only, or the LVL library): the rebuilt APK may stop at a "Get this app from Play" screen or refuse to run. Tell the user and ask whether to continue.
+- **`integrity`** (Play Integrity / SafetyNet client, low confidence, often bundled by SDKs): the app starts; online features whose backend enforces the verdict may fail. Mention it in the report.
+- **`none`**: continue.
+
+**Never try to remove, disable, patch around or otherwise defeat a protection.** This skill only detects it and informs the user. With a `medium` confidence hardener match, say that the match is probable, not certain.
 
 ### Phase 3: Identify Targets
 
@@ -387,6 +409,7 @@ Generate a structured neutralization report and suggest next steps.
 ## Warnings
 
 - Play Integrity / SafetyNet will FAIL (expected for enterprise sideloading)
+- [Protection check result from Phase 2b: `PROTECTION_SUMMARY` and each `PROTECTION_DETECTED` protection, e.g. "Protected by Google Play PairIP (signature check + VM): the rebuilt APK will not run"]
 - Stubbed getInstance() methods return null — may cause NullPointerException in app code
 - Features gated behind ad views (e.g., rewarded content) will stop working
 - [Any SDK-specific warnings, e.g., native .so integrity checks detected]

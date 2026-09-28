@@ -89,6 +89,8 @@ Output:
   OBB_WARNING:<name>                                    (OBB files are never merged)
   DEPRECATION_WARNING:keep-splits                       (-KeepSplits only)
   XAPK_ORIGIN:<path>                                    (-KeepSplits only)
+  PROTECTION_DETECTED:... / PROTECTION_SUMMARY:<kind>   (detect-protection.ps1, run
+                                                        after a successful decode)
 All paths are absolute. The output directory is replaced only after a successful
 decode (the new tree is decoded next to it, then swapped in).
 "@
@@ -559,6 +561,20 @@ try {
     }
     if ($decodeTmp) { Remove-Tree $decodeTmp }
     Remove-Tree $workDir
+}
+
+# Protection check (detection only, informational): warn now, before any time
+# is spent on a rebuild, when a re-signed APK of this app will not run. It never
+# changes the decode result or exit code.
+$detectProtection = Join-Path $PSScriptRoot 'detect-protection.ps1'
+if (Test-Path -LiteralPath $detectProtection -PathType Leaf) {
+    Write-Host ""
+    try {
+        & $detectProtection -DecodedDir $outputAbs
+        if ($LASTEXITCODE -ne 0) { throw "exit code $LASTEXITCODE" }
+    } catch {
+        Write-Host "[WARN] Protection check failed ($_); run detect-protection.ps1 manually." -ForegroundColor Yellow
+    }
 }
 exit 0
 
