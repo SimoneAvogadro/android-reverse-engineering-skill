@@ -1,6 +1,7 @@
 # install-dep.ps1 — Install a single dependency for Android reverse engineering
-# Usage: install-dep.ps1 <dependency>
-# Dependencies: java, jadx, vineflower, dex2jar, apktool, adb
+# Usage: install-dep.ps1 <dependency> [-AcceptAndroidSdkLicense]
+# Dependencies: java, jadx, vineflower, dex2jar, apktool, apkeditor, build-tools, adb
+# Compound: neutralize-all (java + apktool + apkeditor + build-tools)
 #
 # Exit codes:
 #   0 — installed successfully
@@ -8,14 +9,26 @@
 #   2 — requires manual action
 param(
     [Parameter(Position=0)]
-    [string]$Dep
+    [string]$Dep,
+    [switch]$AcceptAndroidSdkLicense,
+    [Alias('h')]
+    [switch]$Help
 )
 
 $ErrorActionPreference = 'Stop'
+# UTF-8 output so captured paths keep non-ASCII characters
+$script:CallerOutputEncoding = $null
+try {
+    $script:CallerOutputEncoding = [Console]::OutputEncoding
+    [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+} catch { }
+# The whole script runs inside this try: the caller's console encoding is
+# restored in the matching finally at the end, including on every 'exit'.
+try {
 
 function Show-Usage {
     Write-Host @"
-Usage: install-dep.ps1 <dependency>
+Usage: install-dep.ps1 <dependency> [-AcceptAndroidSdkLicense]
 
 Install a dependency required for Android reverse engineering.
 
@@ -25,7 +38,13 @@ Available dependencies:
   vineflower   Vineflower (Fernflower fork) decompiler
   dex2jar      DEX to JAR converter
   apktool      Android resource decoder
+  apkeditor    APKEditor (merges XAPK/APKM/APKS split APKs into one APK)
+  build-tools  Android SDK Build-Tools 36.0.0 (zipalign -P 16, apksigner, aapt2);
+               needs -AcceptAndroidSdkLicense (or ACCEPT_ANDROID_SDK_LICENSE=1)
   adb          Android Debug Bridge
+
+Compound targets:
+  neutralize-all   java, apktool, apkeditor, build-tools
 
 The script detects available package managers (winget, scoop, choco), then:
   - Installs using the first available manager
@@ -35,7 +54,7 @@ The script detects available package managers (winget, scoop, choco), then:
     exit 0
 }
 
-if (-not $Dep -or $Dep -eq '-h' -or $Dep -eq '--help') { Show-Usage }
+if ($Help -or -not $Dep -or $Dep -eq '-h' -or $Dep -eq '--help') { Show-Usage }
 
 # --- Detect environment ---
 $hasWinget = [bool](Get-Command winget -ErrorAction SilentlyContinue)
@@ -82,6 +101,7 @@ function Add-ToUserPath {
     }
 }
 
+$SelfScript = $PSCommandPath   # used by neutralize-all to run each dependency as a child
 $localBin   = Join-Path $env:USERPROFILE '.local\bin'
 $localShare = Join-Path $env:USERPROFILE '.local\share'
 
@@ -298,6 +318,220 @@ function Install-Apktool {
     }
 }
 
+# APKEditor (REAndroid, Apache-2.0): pinned release, verified by SHA-256.
+# Keep in sync with APKEDITOR_VERSION / APKEDITOR_SHA256 in install-dep.sh.
+$ApkEditorVersion = '1.4.9'
+$ApkEditorSha256  = 'a9cd40df818845456be6d696de6110c89edf4b0a0580cb83438ed6b25a366e67'
+
+function Install-ApkEditor {
+    if ($env:APKEDITOR_JAR) {
+        if (Test-Path -LiteralPath $env:APKEDITOR_JAR) {
+            Write-Ok "APKEditor JAR provided via APKEDITOR_JAR: $env:APKEDITOR_JAR"
+            return
+        }
+        Write-Fail "APKEDITOR_JAR is set but the file does not exist: $env:APKEDITOR_JAR"
+        exit 1
+    }
+
+    $installDir = Join-Path $localShare 'apkeditor'
+    $jar = Join-Path $installDir 'APKEditor.jar'
+    $url = "https://github.com/REAndroid/APKEditor/releases/download/V$ApkEditorVersion/APKEditor-$ApkEditorVersion.jar"
+
+    $installed = $false
+    if (Test-Path -LiteralPath $jar) {
+        if ((Get-FileHash -LiteralPath $jar -Algorithm SHA256).Hash -eq $ApkEditorSha256) {
+            Write-Ok "APKEditor $ApkEditorVersion already installed: $jar"
+            $installed = $true
+        }
+    }
+
+    if (-not $installed) {
+        Write-Info "Installing APKEditor $ApkEditorVersion from GitHub releases..."
+        New-Item -ItemType Directory -Path $installDir -Force | Out-Null
+        $tmpJar = Join-Path $env:TEMP "apkeditor-$(Get-Random).jar"
+        $oldProgress = $ProgressPreference
+        $ProgressPreference = 'SilentlyContinue'   # PS 5.1 download is very slow with the progress bar
+        $verified = $false
+        for ($attempt = 1; $attempt -le 3; $attempt++) {
+            try {
+                Invoke-Download -Url $url -Dest $tmpJar
+                $actual = (Get-FileHash -LiteralPath $tmpJar -Algorithm SHA256).Hash
+                if ($actual -eq $ApkEditorSha256) { $verified = $true; break }
+                Write-Fail "SHA-256 mismatch for APKEditor-$ApkEditorVersion.jar (expected $ApkEditorSha256, got $actual)"
+            } catch {
+                Write-Fail "Download failed: $($_.Exception.Message)"
+            }
+            if ($attempt -lt 3) {
+                Write-Info "Retrying download (attempt $($attempt + 1)/3)..."
+                Start-Sleep -Seconds 2
+            }
+        }
+        $ProgressPreference = $oldProgress
+        if (-not $verified) {
+            Remove-Item -LiteralPath $tmpJar -Force -ErrorAction SilentlyContinue
+            Write-Fail "Could not download a verified APKEditor $ApkEditorVersion JAR."
+            Write-Manual "Download $url, check its SHA-256 is $ApkEditorSha256, then save it as $jar (or set APKEDITOR_JAR)"
+        }
+        Move-Item -LiteralPath $tmpJar -Destination $jar -Force
+        Write-Ok "APKEditor $ApkEditorVersion installed to $jar (SHA-256 verified)"
+    }
+
+    # Launcher (honours APKEDITOR_JAR at run time)
+    New-Item -ItemType Directory -Path $localBin -Force | Out-Null
+    $wrapperPath = Join-Path $localBin 'apkeditor.cmd'
+    $wrapper = "@echo off`r`nif defined APKEDITOR_JAR (`r`n  java -jar `"%APKEDITOR_JAR%`" %*`r`n) else (`r`n  java -jar `"$jar`" %*`r`n)"
+    Set-Content -Path $wrapperPath -Value $wrapper -Encoding ASCII
+
+    Add-ToUserPath $localBin
+}
+
+# Android SDK Build-Tools - pinned official package from dl.google.com.
+# SHA-256 computed from the archive whose SHA-1 (f16ccffd34de8790dede813a6c7d8e2c11a27b50)
+# matches Google's repository XML (https://dl.google.com/android/repository/repository2-3.xml).
+# Keep in sync with BUILD_TOOLS_* in install-dep.sh.
+$BuildToolsVersion = '36.0.0'
+$BuildToolsArchive = 'build-tools_r36_windows.zip'
+$BuildToolsSha256  = 'aa1095cb14d83e483818a748a2c06faaeb8e601561b06a356a119a1b2ca280d3'
+$AndroidSdkLicenseUrl = 'https://developer.android.com/studio/terms'
+
+function Get-LatestBuildToolsDir {
+    param([string]$SdkRoot)
+    if (-not $SdkRoot) { return }
+    $bt = Join-Path $SdkRoot 'build-tools'
+    if (-not (Test-Path -LiteralPath $bt)) { return }
+    $latest = Get-ChildItem -LiteralPath $bt -Directory |
+        Sort-Object { try { [version]($_.Name -replace '-.*$', '') } catch { [version]'0.0' } } |
+        Select-Object -Last 1
+    if ($latest) { return $latest.FullName }
+}
+
+function Test-ZipalignHasP {
+    param([string]$Exe)
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { $out = (& $Exe 2>&1 | ForEach-Object { "$_" }) -join "`n" } catch { $out = '' }
+    finally { $ErrorActionPreference = $prev }
+    return ($out -match '-P <pagesize')
+}
+
+function Install-BuildTools {
+    $sdkRoots = @($env:ANDROID_HOME, $env:ANDROID_SDK_ROOT, (Join-Path $env:LOCALAPPDATA 'Android\Sdk'), (Join-Path $localShare 'android-sdk'))
+    foreach ($sdk in $sdkRoots) {
+        $bt = Get-LatestBuildToolsDir $sdk
+        if ($bt -and (Test-Path -LiteralPath (Join-Path $bt 'zipalign.exe')) -and (Test-Path -LiteralPath (Join-Path $bt 'apksigner.bat')) -and (Test-ZipalignHasP (Join-Path $bt 'zipalign.exe'))) {
+            Write-Ok "Android build-tools with zipalign -P and apksigner already installed: $bt"
+            return
+        }
+    }
+
+    Write-Host ""
+    Write-Host "[LICENSE] Android SDK Build-Tools $BuildToolsVersion are distributed by Google under the" -ForegroundColor Yellow
+    Write-Host "          Android Software Development Kit License Agreement:" -ForegroundColor Yellow
+    Write-Host "            $AndroidSdkLicenseUrl" -ForegroundColor Yellow
+    Write-Host "          Read it before installing. To accept it and install, re-run with" -ForegroundColor Yellow
+    Write-Host "            install-dep.ps1 build-tools -AcceptAndroidSdkLicense" -ForegroundColor Yellow
+    Write-Host "          (or set ACCEPT_ANDROID_SDK_LICENSE=1)." -ForegroundColor Yellow
+    Write-Host ""
+    if (-not ($AcceptAndroidSdkLicense -or $env:ACCEPT_ANDROID_SDK_LICENSE -eq '1')) {
+        Write-Fail "Android SDK license not accepted - build-tools not installed."
+        exit 2
+    }
+    Write-Info "Android SDK license accepted via -AcceptAndroidSdkLicense / ACCEPT_ANDROID_SDK_LICENSE=1"
+
+    # Prefer sdkmanager when an SDK root is configured
+    $sdkRoot = $env:ANDROID_HOME
+    if (-not $sdkRoot) { $sdkRoot = $env:ANDROID_SDK_ROOT }
+    if ($sdkRoot) {
+        $sdkm = Join-Path $sdkRoot 'cmdline-tools\latest\bin\sdkmanager.bat'
+        if (-not (Test-Path -LiteralPath $sdkm)) {
+            $c = Get-Command sdkmanager -ErrorAction SilentlyContinue
+            if ($c) { $sdkm = $c.Source } else { $sdkm = $null }
+        }
+        if ($sdkm) {
+            Write-Info "Installing build-tools;$BuildToolsVersion with sdkmanager into $sdkRoot..."
+            $prev = $ErrorActionPreference
+            $ErrorActionPreference = 'Continue'
+            try { (@('y') * 20) | & $sdkm "--sdk_root=$sdkRoot" --install "build-tools;$BuildToolsVersion" 2>&1 | ForEach-Object { Write-Host "$_" } }
+            finally { $ErrorActionPreference = $prev }
+            if (Test-Path -LiteralPath (Join-Path $sdkRoot "build-tools\$BuildToolsVersion\zipalign.exe")) {
+                Write-Ok "build-tools $BuildToolsVersion installed with sdkmanager: $sdkRoot\build-tools\$BuildToolsVersion"
+                return
+            }
+            Write-Info "sdkmanager did not install build-tools - falling back to direct download."
+        }
+    }
+
+    $url = "https://dl.google.com/android/repository/$BuildToolsArchive"
+    $tmpDir = Join-Path $env:TEMP "build-tools-$(Get-Random)"
+    New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
+    $tmpZip = Join-Path $tmpDir 'bt.zip'
+    $oldProgress = $ProgressPreference
+    $ProgressPreference = 'SilentlyContinue'
+    $verified = $false
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        try {
+            Invoke-Download -Url $url -Dest $tmpZip
+            $actual = (Get-FileHash -LiteralPath $tmpZip -Algorithm SHA256).Hash
+            if ($actual -eq $BuildToolsSha256) { $verified = $true; break }
+            Write-Fail "SHA-256 mismatch for $BuildToolsArchive (expected $BuildToolsSha256, got $actual)"
+        } catch {
+            Write-Fail "Download failed: $($_.Exception.Message)"
+        }
+        if ($attempt -lt 3) { Write-Info "Retrying download (attempt $($attempt + 1)/3)..."; Start-Sleep -Seconds 2 }
+    }
+    $ProgressPreference = $oldProgress
+    if (-not $verified) {
+        Remove-Item -LiteralPath $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
+        Write-Fail "Could not download a verified build-tools $BuildToolsVersion archive."
+        Write-Manual "Install it with Android Studio's SDK Manager, or download $url (SHA-256 $BuildToolsSha256) and extract it to $localShare\android-sdk\build-tools\$BuildToolsVersion"
+    }
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $xDir = Join-Path $tmpDir 'x'
+    [System.IO.Compression.ZipFile]::ExtractToDirectory($tmpZip, $xDir)
+    $top = Get-ChildItem -LiteralPath $xDir -Directory | Select-Object -First 1
+    if (-not $top -or -not (Test-Path -LiteralPath (Join-Path $top.FullName 'zipalign.exe'))) {
+        Remove-Item -LiteralPath $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
+        Write-Fail "Unexpected build-tools archive layout."
+        exit 1
+    }
+    $dest = Join-Path $localShare "android-sdk\build-tools\$BuildToolsVersion"
+    New-Item -ItemType Directory -Path (Split-Path $dest -Parent) -Force | Out-Null
+    if (Test-Path -LiteralPath $dest) { Remove-Item -LiteralPath $dest -Recurse -Force }
+    Move-Item -LiteralPath $top.FullName -Destination $dest
+    Remove-Item -LiteralPath $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
+
+    Add-ToUserPath $dest
+    if (Test-ZipalignHasP (Join-Path $dest 'zipalign.exe')) {
+        Write-Ok "Android build-tools $BuildToolsVersion installed to $dest (SHA-256 verified)"
+    } else {
+        Write-Fail "build-tools installed to $dest but its zipalign does not run on this system."
+        exit 1
+    }
+}
+
+function Install-NeutralizeAll {
+    Write-Host "=== Installing all SDK Neutralizer dependencies ==="
+    $failed = @()
+    $needsLicense = $false
+    foreach ($d in @('java', 'apktool', 'apkeditor', 'build-tools')) {
+        Write-Info "--- $d ---"
+        # A child invocation, so one dependency's 'exit' does not stop the others
+        if ($AcceptAndroidSdkLicense) { & $SelfScript $d -AcceptAndroidSdkLicense } else { & $SelfScript $d }
+        if ($LASTEXITCODE -ne 0) {
+            $failed += "$d (exit $LASTEXITCODE)"
+            if ($d -eq 'build-tools' -and $LASTEXITCODE -eq 2) { $needsLicense = $true }
+        }
+        Write-Host ""
+    }
+    if ($failed.Count -gt 0) {
+        Write-Fail "Failed to install: $($failed -join ', ')"
+        # Same as install-dep.sh: only the Android SDK license missing = manual action (2)
+        if ($needsLicense -and $failed.Count -eq 1) { exit 2 }
+        exit 1
+    }
+    Write-Ok "All SDK Neutralizer dependencies installed."
+}
+
 function Install-Adb {
     if (Get-Command adb -ErrorAction SilentlyContinue) {
         Write-Ok "adb already installed"
@@ -336,10 +570,22 @@ switch ($Dep) {
     'fernflower'  { Install-Vineflower }
     'dex2jar'     { Install-Dex2Jar }
     'apktool'     { Install-Apktool }
+    'apkeditor'   { Install-ApkEditor }
+    'build-tools' { Install-BuildTools }
+    'buildtools'  { Install-BuildTools }
+    'zipalign'    { Install-BuildTools }
+    'neutralize-all' { Install-NeutralizeAll }
     'adb'         { Install-Adb }
     default {
         Write-Host "Error: Unknown dependency '$Dep'" -ForegroundColor Red
-        Write-Host "Available: java, jadx, vineflower, dex2jar, apktool, adb"
+        Write-Host "Available: java, jadx, vineflower, dex2jar, apktool, apkeditor, build-tools, adb"
+        Write-Host "Compound: neutralize-all"
         exit 1
+    }
+}
+
+} finally {
+    if ($script:CallerOutputEncoding) {
+        try { [Console]::OutputEncoding = $script:CallerOutputEncoding } catch { }
     }
 }

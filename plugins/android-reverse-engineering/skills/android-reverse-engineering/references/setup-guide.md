@@ -181,6 +181,29 @@ brew install apktool
 # Manual: https://apktool.org/docs/install
 ```
 
+### APKEditor
+
+Used by the SDK neutralizer to merge XAPK/APKM/APKS split APKs into one APK before decoding.
+
+```bash
+# Pinned release, SHA-256 verified, installed to ~/.local/share/apkeditor/APKEditor.jar
+bash scripts/install-dep.sh apkeditor
+# Windows: .\scripts\install-dep.ps1 apkeditor
+# Custom location: export APKEDITOR_JAR=/path/to/APKEditor.jar
+```
+
+### Android SDK Build-Tools (zipalign, apksigner)
+
+Required by the SDK neutralizer to page-align native libraries (`zipalign -P 16` needs build-tools 35+) and sign APKs. Distro packages are too old (Debian's `zipalign` has no `-P`, its `apksigner` does not align).
+
+```bash
+# Pinned 36.0.0 from dl.google.com, SHA-256 verified, into ~/.local/share/android-sdk
+# (uses sdkmanager instead when ANDROID_HOME/ANDROID_SDK_ROOT has one).
+# Licensed under the Android SDK License: https://developer.android.com/studio/terms
+bash scripts/install-dep.sh build-tools --accept-android-sdk-license
+# Windows: .\scripts\install-dep.ps1 build-tools -AcceptAndroidSdkLicense
+```
+
 ### adb (Android Debug Bridge)
 
 Useful for pulling APKs directly from a connected Android device.

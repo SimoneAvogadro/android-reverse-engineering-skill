@@ -32,9 +32,9 @@ Before doing anything else, warn the user clearly about the implications of SDK 
 
 ### Step 2: Get the APK/XAPK file
 
-If the user provided a path as an argument, use that. Otherwise, ask the user for the path to the APK or XAPK file.
+If the user provided a path as an argument, use that. Otherwise, ask the user for the path to the APK or split bundle (XAPK/APKM/APKS).
 
-Verify the file exists and is an APK or XAPK:
+Verify the file exists and is an APK or a split bundle:
 
 ```bash
 file "$APK_PATH"
@@ -45,36 +45,36 @@ file "$APK_PATH"
 Run the dependency check to ensure all required tools are installed:
 
 ```bash
-bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/check-neutralize-deps.sh
+bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/check-neutralize-deps.sh "$APK_PATH"
 ```
 
-If any `INSTALL_REQUIRED:` lines appear, install all dependencies at once:
+(Passing the file makes APKEditor required for XAPK/APKM/APKS input.)
+
+On Windows without bash, `check-neutralize-deps.ps1`, `decode-apk.ps1` and `rebuild-apk.ps1` (PowerShell 5.1) are available; `neutralize.sh` and `registry-scan.py` still require bash + python3 (WSL or Git Bash) for now.
+
+If any `INSTALL_REQUIRED:` lines appear, install all dependencies at once (java, apktool, apkeditor, build-tools, zip). `build-tools` is Google's Android SDK Build-Tools (zipalign + apksigner), licensed under the Android Software Development Kit License Agreement (https://developer.android.com/studio/terms): show the user this link and ask for explicit acceptance **before** passing `--accept-android-sdk-license`. Never accept it on the user's behalf:
 
 ```bash
-bash ${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/install-dep.sh neutralize-all
+bash ${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/install-dep.sh neutralize-all --accept-android-sdk-license
 ```
 
-If the script exits with code 2 (sudo needed but no TTY — common inside Claude Code), tell the user to run this command in their terminal:
-
-```
-sudo bash <full-path-to>/install-dep.sh neutralize-all
-```
-
-Provide the **full resolved path** (replace `${CLAUDE_PLUGIN_ROOT}` with the actual path) so the user can copy-paste directly.
+Never run `install-dep.sh` itself with `sudo`: it installs per-user tools (apktool, APKEditor, build-tools) into `~/.local` of the invoking user and refuses to run under sudo. It calls sudo on its own only for system packages (Java, zip). If it exits with code 2 because sudo needs a password and there is no TTY (common inside Claude Code), it prints the exact `[MANUAL ACTION REQUIRED]` command (e.g. `sudo apt-get update && sudo apt-get install -y openjdk-17-jdk`): ask the user to run **that** command in their terminal, then re-run `install-dep.sh neutralize-all` without sudo.
 
 ### Step 4: Decode APK/XAPK
 
-Decode the APK or XAPK using decode-apk.sh (handles both formats; for XAPKs extracts and decodes the base APK while preserving the full XAPK structure for rebuild):
+Decode the APK or split bundle using decode-apk.sh. A split bundle (`.xapk`, `.apkm`, `.apks`) is first merged into one APK with APKEditor, then decoded, so resources that live only in the splits are kept (decoding the base alone turns them into `@null`):
 
 ```bash
-# Strip both .apk and .xapk extensions for the output dir name
+# Strip the .apk/.xapk/.apkm/.apks extension for the output dir name
 DECODED_DIR="${APK_PATH%.*}-decoded"
 bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/decode-apk.sh "$APK_PATH" -o "$DECODED_DIR"
 ```
 
 Verify the decoded directory contains `smali/` and `AndroidManifest.xml` (the script does this automatically and outputs `DECODED_DIR:<path>`).
 
-If the output includes `XAPK_ORIGIN:<path>`, inform the user: "This is an XAPK (split APK bundle). The base APK has been decoded for neutralization, and all split APKs are preserved. During rebuild, all APKs (base + splits) will be re-signed with the same key and reassembled into a new XAPK."
+If the output includes `MERGED_FROM_SPLITS:<path>`, inform the user: "This is a split APK bundle. Its splits were merged into a single APK with APKEditor before decoding; the rebuild will produce one APK installable with `adb install`." Relay any `OBB_WARNING:` lines (OBB files must be copied to the device separately).
+
+The legacy `--keep-splits` flag (decode the base only, rebuild an XAPK) is deprecated: do not use it unless the user explicitly asks for XAPK output.
 
 ### Step 5: Identify targets — Registry Scan
 
@@ -181,31 +181,18 @@ Parse the `PATCHED:` and `MANIFEST_DISABLED:` output lines for the report.
 
 ### Step 8: Rebuild & sign
 
-**If the input was an XAPK**, ask the user how they want the output:
-
-> The original input was an XAPK (split APK bundle). How would you like to rebuild?
->
-> 1. **Merged single APK** (recommended for sideloading) — merges split contents into one APK, installable with standard `adb install`. May be missing some locale/density resources.
-> 2. **XAPK bundle** (preserves original structure) — requires `adb install-multiple` to install. All splits preserved exactly.
-
-If the user chooses option 1, run `merge-splits.sh` before rebuilding:
-
-```bash
-bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/merge-splits.sh "${DECODED_DIR}"
-```
-
-**Then ask the user their signing preference**:
+The output is always a single APK. **Ask the user their signing preference**:
 
 > How would you like to sign the rebuilt APK?
 >
-> 1. **Auto-detect** (recommended) — checks `~/.android/debug.keystore` first, then generates a debug key
+> 1. **Stable debug key** (recommended) — the user-level neutralizer debug key (`~/.config/android-re/neutralizer-debug.keystore`), created once and always reused so later builds install over earlier ones
 > 2. **Custom keystore** — provide path, alias, and password
 > 3. **No signing** — output unsigned APK
 
 Then rebuild with the appropriate flag:
 
 ```bash
-# Auto-detect keystore (recommended)
+# Stable user-level debug key (recommended)
 bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/rebuild-apk.sh "${DECODED_DIR}" --auto-keystore
 
 # Or with custom keystore
@@ -217,24 +204,24 @@ bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/rebuild-apk.sh "${DECO
 
 Parse the output for:
 - `KEYSTORE_USED:<path>` — which keystore was used
-- `KEYSTORE_SOURCE:<source>` — how it was resolved (debug-standard, debug-previous, debug-generated, custom)
+- `KEYSTORE_SOURCE:<source>` — how it was resolved (`debug-user` = existing stable key, `debug-generated` = stable key created now, `custom`)
 - `KEYSTORE_ALIAS:<alias>` — the key alias used for signing
-- `SPLIT_SIGNED:<filename>` — each re-signed split APK (XAPK only)
-- `XAPK_ASSEMBLED:<path>` — final XAPK output (XAPK only)
-
-For XAPK output: inform the user that install requires `adb install-multiple` (unzip the XAPK first, then `adb install-multiple *.apk`).
+- `ALIGN_OK:<n>:16k|4k|none|n/a` / `ALIGN_WARNING:not-16k|so-not-page-aligned` / `ALIGN_FAIL:<entry>` — alignment of stored entries and page alignment of stored native libraries (zipalign `-P 16` when supported, else `-p`); on `ALIGN_FAIL` the script exits 1 and leaves the APK as `<output>.misaligned`. `ALIGN_WARNING:not-16k` means devices with 16 KB pages will refuse it
+- `ABI_WARNING:32bit-only:<abis>` — only 32-bit native code: warn that many recent phones (e.g. Galaxy S25, Pixel 7 and later) are 64-bit only and will refuse to install it
+- `DEPRECATION_WARNING:xapk-output`, `SPLIT_SIGNED:<filename>`, `XAPK_ASSEMBLED:<path>` — only for a directory decoded with the deprecated `--keep-splits` (install with `adb install-multiple` after unzipping the XAPK)
 
 ### Step 9: Report & next steps
 
 Generate a neutralization report following the format in `${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/SKILL.md` (Phase 6). **The report must include the "Side Effects & Legal Notice" section.**
 
 Include in the report:
-- **Output format**: APK or XAPK (split bundle)
+- **Output format**: APK, APK merged from a split bundle, or XAPK (deprecated `--keep-splits` only)
 - **Keystore used**: path and source (from `KEYSTORE_USED:` / `KEYSTORE_SOURCE:` output)
-- **Install command**: `adb install <path>` for APK, `adb install-multiple <base.apk> <splits...>` for XAPK
+- **Install command**: `adb install <path>` (deprecated XAPK: `adb install-multiple <base.apk> <splits...>`)
+- **Upgrade note**: builds made before the stable user-level key existed were signed with a per-directory key; installing over one of them fails once with a signature mismatch — `adb uninstall <package>` first
 
 Tell the user what they can do next:
-- **Test thoroughly**: for APK: "Install via `adb install <apk>`"; for XAPK: "Unzip the XAPK, then install via `adb install-multiple *.apk`" — test for crashes, especially features tied to ads or analytics
+- **Test thoroughly**: "Install via `adb install <apk>`" — test for crashes, especially features tied to ads or analytics
 - **Verify**: "I can re-run entry point detection on the rebuilt APK to confirm neutralization"
 - **Custom targets**: "If the app uses obfuscated SDK calls, provide a targets file for additional patching"
 - **Deep analysis**: "Run `/find-trackers` or `/find-ads` for full SDK analysis"

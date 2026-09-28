@@ -21,7 +21,7 @@ A Claude Code Skill (plugin) for Android reverse engineering, API extraction, an
 - `plugins/android-reverse-engineering/skills/android-reverse-engineering/` — Core RE skill (5-phase workflow, references, scripts)
 - `plugins/android-reverse-engineering/skills/tracker-analysis/` — Tracker/analytics SDK detection skill (4-phase workflow, references, find-trackers.sh)
 - `plugins/android-reverse-engineering/skills/ad-analysis/` — Advertising SDK detection skill (3-phase workflow, references, find-ads.sh)
-- `plugins/android-reverse-engineering/skills/sdk-neutralizer/` — SDK neutralization skill (6-phase workflow, references, decode-apk.sh, neutralize.sh, registry-scan.py, merge-splits.sh, rebuild-apk.sh)
+- `plugins/android-reverse-engineering/skills/sdk-neutralizer/` — SDK neutralization skill (6-phase workflow, references, decode-apk.sh/.ps1, neutralize.sh, registry-scan.py, rebuild-apk.sh/.ps1, check-neutralize-deps.sh/.ps1)
 - `plugins/android-reverse-engineering/skills/sdk-neutralizer/registry/` — SDK registry (33 JSON files defining neutralization targets, manifest components, protected patterns)
 
 ## Key Scripts
@@ -35,8 +35,9 @@ bash scripts/check-deps.sh
 # Install a dependency (auto-detects OS/package manager)
 bash scripts/install-dep.sh <dep>   # e.g., jadx, vineflower, dex2jar
 
-# Install ALL neutralizer dependencies at once (java, apktool, apksigner, zip)
-bash scripts/install-dep.sh neutralize-all
+# Install ALL neutralizer dependencies at once (java, apktool, apkeditor, build-tools, zip);
+# build-tools (pinned Android SDK Build-Tools 36.0.0) needs the user's explicit license acceptance
+bash scripts/install-dep.sh neutralize-all --accept-android-sdk-license
 
 # Decompile an APK/JAR/AAR/XAPK
 bash scripts/decompile.sh [--engine jadx|fernflower|both] [--deobf] [--no-res] [-o outdir] <file>
@@ -62,11 +63,13 @@ bash find-ads.sh <source-dir> [--admob|--unity|--ironsource|--applovin|--faceboo
 SDK neutralizer scripts under `plugins/android-reverse-engineering/skills/sdk-neutralizer/scripts/`:
 
 ```bash
-# Check neutralization dependencies (including apktool >= 2.9.0, Python 3.6+ optional)
-bash check-neutralize-deps.sh
+# Check neutralization dependencies (including apktool >= 2.9.0, Python 3.6+ optional;
+# APKEditor required when <input> is a split bundle; reports zipalign -P 16 support)
+bash check-neutralize-deps.sh [<input>]
 
-# Decode APK or XAPK (for XAPK: decodes base APK, preserves splits in .xapk-origin/)
-bash decode-apk.sh <file.apk|file.xapk> [-o <decoded-dir>]
+# Decode APK, or merge a split bundle (XAPK/APKM/APKS/dir) with APKEditor then decode
+# (writes .merged-from-splits.json; --keep-splits = deprecated base-only decode + .xapk-origin/)
+bash decode-apk.sh <file.apk|file.xapk|file.apkm|file.apks|dir> [-o <decoded-dir>] [--keep-splits]
 
 # Scan decoded APK against SDK registry (generates targets-file + manifest-components-file)
 # Depth: 1=entry_points only, 2=+ad_operations, 3=+deep_patterns
@@ -78,12 +81,14 @@ bash neutralize.sh <decoded-dir> --no-builtin-targets --targets-file <decoded-di
 # Fallback (builtin targets):
 bash neutralize.sh <decoded-dir> [--ads|--trackers|--all] [--dry-run] [--no-backup] [--no-manifest] [--targets-file <file>] [--replay] [--no-save-manifest]
 
-# Merge XAPK splits into decoded base for single APK output (optional, for XAPK input)
-bash merge-splits.sh <decoded-dir> [--abi <abi>] [--all-abis] [--skip-resources]
-
-# Rebuild and sign neutralized APK (auto-reassembles XAPK if .xapk-origin/ exists, or single APK if merged)
-bash rebuild-apk.sh <decoded-dir> [--auto-keystore|--debug-key|--keystore <file>] [-o <output>] [--no-sign] [--no-res] [--zipalign] [--single-apk]
+# Rebuild and sign a single APK (zipalign -P 16 / -p — required for stored .so with
+# extractNativeLibs=false; alignment check of all stored entries; ABI warning;
+# stable user-level debug key ~/.config/android-re/neutralizer-debug.keystore);
+# a deprecated --keep-splits dir (.xapk-origin/) is reassembled into an XAPK instead
+bash rebuild-apk.sh <decoded-dir> [--auto-keystore|--debug-key|--keystore <file>] [-o <output>] [--no-sign] [--zipalign|--no-zipalign]
 ```
+
+Windows: `check-neutralize-deps.ps1`, `decode-apk.ps1` and `rebuild-apk.ps1` mirror the bash scripts (PowerShell 5.1, `-Output`/`-KeepSplits`/`-AutoKeystore`...); `neutralize.sh` and `registry-scan.py` still require bash + python3 (WSL/Git Bash) for now. `APKEDITOR_JAR` overrides the APKEditor JAR location on both platforms.
 
 SDK registry under `plugins/android-reverse-engineering/skills/sdk-neutralizer/registry/`:
 
@@ -129,5 +134,6 @@ Claude Code reads the version from `plugin.json` with priority — if that file 
 ## Conventions
 
 - Line endings are LF (enforced via `.gitattributes` for WSL/Windows compatibility)
-- Scripts target Bash 4.0+ and support Linux (apt/dnf/pacman) and macOS (Homebrew)
-- Scripts fall back to user-local installs (`~/.local/`) when sudo is unavailable
+- Scripts target Bash 4.0+ and support Linux (apt/dnf/pacman) and macOS (Homebrew); `install-dep.sh`, `check-neutralize-deps.sh`, `decode-apk.sh` and `rebuild-apk.sh` are written to also run on macOS's stock bash 3.2 with BSD tools
+- `.sh`/`.ps1` pairs must keep feature parity; `.ps1` scripts target Windows PowerShell 5.1 (no PS7-only syntax)
+- Scripts fall back to user-local installs (`~/.local/`) when sudo is unavailable; `install-dep.sh` must run as the user (it refuses sudo for per-user targets and calls sudo itself only for system packages)

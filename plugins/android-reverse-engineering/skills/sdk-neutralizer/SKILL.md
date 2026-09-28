@@ -38,9 +38,18 @@ Legitimate use cases exist (enterprise privacy compliance, authorized security t
 
 ## Prerequisites
 
-This skill requires an APK file. It will decode the APK with apktool, neutralize SDK methods in the smali code, and rebuild a signed APK.
+This skill requires an APK file or a split APK bundle (XAPK/APKM/APKS). It will decode the APK with apktool, neutralize SDK methods in the smali code, and rebuild a signed APK. Split bundles are merged into a single APK before decoding, so the result is always one installable APK.
 
-Required tools: `java 17+`, `apktool`, `apksigner` or `jarsigner`
+Required tools: `java 17+`, `apktool`, `unzip`, and Android SDK Build-Tools (`apksigner` + `zipalign`; build-tools 35+ for `zipalign -P 16`), plus [APKEditor](https://github.com/REAndroid/APKEditor) for XAPK/APKM/APKS input. zipalign is **required** whenever the APK has stored native libraries with `extractNativeLibs="false"` (the rebuild fails without it). `jarsigner` is only a v1-signature fallback for apps targeting SDK < 30.
+
+**Windows**: `check-neutralize-deps.ps1`, `decode-apk.ps1` and `rebuild-apk.ps1` (PowerShell 5.1+) mirror the bash scripts, with PowerShell-style flags (`-Output`, `-KeepSplits`, `-AutoKeystore`, ...). `neutralize.sh` and `registry-scan.py` still require bash and python3 (WSL or Git Bash) for now. Example:
+
+```
+powershell -NoProfile -ExecutionPolicy Bypass -File <plugin-root>\skills\sdk-neutralizer\scripts\decode-apk.ps1 C:\apks\app.xapk -Output C:\work\app-decoded
+powershell -NoProfile -ExecutionPolicy Bypass -File <plugin-root>\skills\sdk-neutralizer\scripts\rebuild-apk.ps1 C:\work\app-decoded -AutoKeystore
+```
+
+**Exit codes** (all scripts): 0 = success, 1 = error (including unknown options and a misaligned rebuild), 2 = manual action needed (install-dep: sudo, or the Android SDK license not accepted).
 
 ## Workflow
 
@@ -61,25 +70,24 @@ Check that all required tools are installed.
 **Action**: Run the dependency check.
 
 ```bash
-bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/check-neutralize-deps.sh
+# Pass the input file: APKEditor is required only for XAPK/APKM/APKS input
+bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/check-neutralize-deps.sh <apk-or-xapk-file>
 ```
 
-If any `INSTALL_REQUIRED:` lines appear, ask the user to install all dependencies at once:
+The output also reports `ZIPALIGN_PAGE_ALIGN:16k|4k|none` (whether zipalign supports `-P 16` for 16 KB-page devices or only `-p`).
+
+If any `INSTALL_REQUIRED:` lines appear, ask the user to install all dependencies at once. `build-tools` downloads Google's Android SDK Build-Tools (pinned 36.0.0, SHA-256 verified; `sdkmanager` is used instead when `ANDROID_HOME`/`ANDROID_SDK_ROOT` has one). It is licensed under the [Android Software Development Kit License Agreement](https://developer.android.com/studio/terms): **show the user that link and get their explicit acceptance before passing `--accept-android-sdk-license`** — never pass it on your own.
 
 ```bash
-# Install all neutralizer deps (java, apktool, apksigner, zip) in one command
-bash ${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/install-dep.sh neutralize-all
+# Install all neutralizer deps (java, apktool, apkeditor, build-tools, zip) in one command
+bash ${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/install-dep.sh neutralize-all --accept-android-sdk-license
 ```
 
-If the script exits with code 2 (sudo needed but no TTY), tell the user to run in their terminal:
-
-```
-sudo bash <plugin-root>/skills/android-reverse-engineering/scripts/install-dep.sh neutralize-all
-```
+Without the flag, `build-tools` prints the license notice and exits 2. Never run `install-dep.sh` with `sudo`: per-user tools (apktool, APKEditor, build-tools) go to the invoking user's `~/.local`, so it refuses to run under sudo and calls sudo itself only for system packages (Java, zip). If it exits with code 2 because sudo needs a password and there is no TTY, it prints the exact package command under `[MANUAL ACTION REQUIRED]` (e.g. `sudo apt-get update && sudo apt-get install -y openjdk-17-jdk`): ask the user to run that command in their terminal, then re-run `install-dep.sh neutralize-all` as their own user.
 
 ### Phase 2: Decode APK
 
-Decode the APK (or XAPK) into smali and resources using decode-apk.sh. This script handles both `.apk` and `.xapk` files — for XAPKs it automatically extracts and decodes the base APK, while preserving the full XAPK structure (split APKs, manifest, icon) in a `.xapk-origin/` directory inside the decoded output for automatic reassembly during rebuild.
+Decode the APK into smali and resources using decode-apk.sh. `.apk` input is decoded directly. Split bundles (`.xapk`, `.apkm`, `.apks`, or a directory of split APKs) are first merged into one APK with APKEditor and then decoded: resources that exist only in config splits (density, locale, ABI) are kept. Decoding the base APK alone would turn every reference to them into `@null` (e.g. AppCompat selector drawables), which crashes at inflation and cannot be repaired after decoding.
 
 **Action**: Run the decode script.
 
@@ -89,12 +97,13 @@ bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/decode-apk.sh <apk-or-
 
 The script verifies the output contains `smali/` and `AndroidManifest.xml` and outputs `DECODED_DIR:<path>`.
 
-For XAPK input, the script also outputs `XAPK_ORIGIN:<path>` and creates:
-- `.xapk-origin/metadata.json` — XAPK metadata (package, version, split list)
-- `.xapk-origin/manifest.json` — original XAPK manifest
-- `.xapk-origin/splits/` — all split APKs (config.arm64_v8a.apk, config.en.apk, etc.)
+For split bundle input, it also outputs:
+- `MERGED_FROM_SPLITS:<decoded-dir>/.merged-from-splits.json` — source file, merged split names, APKEditor version, package and version
+- `OBB_WARNING:<name>` — OBB files are never part of the APK; the user must copy them to the device separately
 
-If the input is an XAPK, inform the user that it's a split APK bundle. Let them know that in Phase 5 (Rebuild) they will be asked whether to produce a **merged single APK** (easier to install) or keep the **XAPK bundle** (preserves all splits).
+If the input is a split bundle, tell the user its splits were merged into a single APK, installable with plain `adb install`.
+
+**Deprecated**: `--keep-splits` decodes only the base APK and keeps the splits in `.xapk-origin/` so that Phase 5 reassembles an XAPK (outputs `DEPRECATION_WARNING:keep-splits` and `XAPK_ORIGIN:<path>`). Split-only resources become `@null` and the app may crash. Use it only if the user explicitly asks for XAPK output; it will be removed.
 
 ### Phase 3: Identify Targets
 
@@ -292,49 +301,15 @@ After a successful (non-dry-run) neutralization, a `neutralize-manifest.json` is
 
 ### Phase 5: Rebuild & Sign
 
-Rebuild the decoded directory back into a signed APK (or XAPK if the original was an XAPK).
+Rebuild the decoded directory into a single signed APK (split bundles were already merged during Phase 2).
 
-#### Phase 5a — XAPK Output Format Choice (XAPK input only)
-
-**If the input was an XAPK**, you **MUST ask the user** how to rebuild:
-
-> How would you like to rebuild the neutralized app?
->
-> 1. **Merged single APK** (recommended for sideloading) — merges split contents into one APK, installable with standard `adb install`. May be missing some locale/density resources.
-> 2. **XAPK bundle** (preserves original structure) — requires `adb install-multiple` to install. All splits preserved exactly.
-
-**If the user chooses option 1 (merged single APK):**
-
-Run `merge-splits.sh` to merge split contents into the decoded base APK directory:
-
-```bash
-bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/merge-splits.sh <decoded-dir>
-```
-
-Options:
-- `--abi <abi>` — merge only a specific ABI (e.g., `arm64-v8a`)
-- `--all-abis` — merge all ABIs (larger but universal APK)
-- `--skip-resources` — skip resource split merge (locale/density)
-- Default (no flags): picks the most common ABI (`arm64-v8a` > `armeabi-v7a` > `x86_64` > `x86`)
-
-Parse output for `MERGE_ABI:`, `MERGE_RESOURCES:`, `SKIPPED_RESOURCES:`, `FEATURE_SPLIT_WARNING:`, `MANIFEST_CLEANED:`, and `MERGE_COMPLETE:` lines.
-
-**Important merge limitations to communicate to the user:**
-- Resource splits (locale, density) are merged best-effort — compiled `resources.arsc` cannot be fused without `aapt2`. The merged APK uses default resources from the base APK.
-- Feature module splits (containing DEX code) **cannot** be merged — the script warns about these.
-- Native library merge changes `android:extractNativeLibs` to `true`, which increases installed size.
-
-After merge, the rebuild script auto-detects the `.merged` marker and produces a single `.apk`.
-
-**If the user chooses option 2 (XAPK bundle):** skip `merge-splits.sh` and proceed directly to rebuild — the script will auto-reassemble the XAPK.
-
-#### Phase 5b — Signing Preference
+#### Phase 5a — Signing Preference
 
 **Before calling rebuild**, you **MUST ask the user** their signing preference:
 
 > How would you like to sign the rebuilt APK?
 >
-> 1. **Auto-detect** (recommended) — checks for `~/.android/debug.keystore` first, then generates a debug key
+> 1. **Stable debug key** (recommended) — the user-level neutralizer debug key, created once and always reused, so later builds install over earlier ones
 > 2. **Custom keystore** — provide path, alias, and password
 > 3. **No signing** — output unsigned APK (cannot be installed directly)
 
@@ -343,31 +318,37 @@ Map the user's choice to the corresponding flag:
 - Option 2 → `--keystore <file> --key-alias <alias> --store-pass <pass> --key-pass <pass>`
 - Option 3 → `--no-sign`
 
-#### Phase 5c — Run Rebuild
+The user-level key lives at `~/.config/android-re/neutralizer-debug.keystore` (`$XDG_CONFIG_HOME` is honoured; `%APPDATA%\android-re\neutralizer-debug.keystore` on Windows). It is created once (race-safe, private permissions) and used by both `--auto-keystore` and the default `--debug-key`, so the certificate never changes between builds. `~/.android/debug.keystore` is never picked automatically: pass it explicitly (`--keystore ~/.android/debug.keystore --key-alias androiddebugkey`) if the user wants it. `--keystore` takes precedence whatever the flag order.
+
+**Upgrading from older builds**: APKs built before this stable key existed were signed with a per-directory key. The first install of a build signed with the stable key over such an APK fails with a signature mismatch: uninstall the old build once (`adb uninstall <package>`).
+
+#### Phase 5b — Run Rebuild
 
 **Action**: Run the rebuild script with the chosen signing option.
 
 ```bash
-# Single merged APK (after merge-splits.sh, auto-detected via .merged marker)
-bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/rebuild-apk.sh <decoded-dir> --auto-keystore
-
-# Or explicitly force single APK output
-bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/rebuild-apk.sh <decoded-dir> --auto-keystore --single-apk
-
-# XAPK bundle (default when .xapk-origin/ exists and no .merged marker)
 bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/rebuild-apk.sh <decoded-dir> --auto-keystore
 ```
 
 Options:
-- `-o <output>` — custom output path
-- `--single-apk` — force single APK output (auto-enabled when `.merged` marker exists)
-- `--auto-keystore` — auto-detect best keystore (recommended)
-- `--debug-key` — always generate new debug keystore
+- `-o <output>` — custom output path (default: `<decoded-dir>-neutralized.apk`)
+- `--auto-keystore` / `--debug-key` (default) — sign with the stable user-level neutralizer debug key
 - `--keystore <file>` — use a custom keystore
 - `--no-sign` — output unsigned APK
 - `--zipalign` / `--no-zipalign` — control zipalign step
 
-For XAPK input without merge, the rebuild is automatic: the script detects `.xapk-origin/`, re-signs all split APKs with the same keystore, and produces a `.xapk` output. Parse the output for `KEYSTORE_USED:`, `KEYSTORE_SOURCE:`, `SPLIT_SIGNED:`, and `XAPK_ASSEMBLED:` lines.
+The script zipaligns before signing (`-P 16` when the zipalign supports 16 KB pages, otherwise `-p`), so stored native libraries are page-aligned. If the APK has stored `.so` files and `extractNativeLibs="false"` (common in APKEditor-merged APKs) and no zipalign is found, it **fails** before signing. After signing it checks every stored entry (4-byte alignment; `.so` page alignment) and **fails** (exit 1) on a misaligned entry, leaving the APK as `<output>.misaligned` instead of `<output>`. apksigner is taken from Android SDK build-tools first; with only `jarsigner` (v1 signatures) the rebuild refuses apps targeting SDK 30+.
+
+Parse the output for:
+- `KEYSTORE_USED:`, `KEYSTORE_SOURCE:` (`debug-user` = existing stable key, `debug-generated` = stable key created now, `custom`), `KEYSTORE_ALIAS:`
+- `SIGN_OK:`, `VERIFY_OK:`
+- `ALIGN_OK:<n>:16k|4k|none|n/a` — no fatal misalignment; `n` stored `.so` files and their page alignment (`none` only comes with the warning below)
+- `ALIGN_WARNING:so-not-page-aligned` — stored `.so` files are not page-aligned; tolerated only because `extractNativeLibs` is not `"false"` (the installer extracts them). Happens only with `--no-zipalign` or jarsigner without zipalign
+- `ALIGN_WARNING:not-16k` — the `.so` files are only 4 KB aligned: devices with 16 KB pages (Android 15+) refuse the APK; tell the user to install build-tools 35+
+- `ALIGN_FAIL:<entry>` — one line per misaligned entry (max 20); the rebuild failed
+- `ABI_WARNING:32bit-only:<abis>` — the APK has only 32-bit native code: warn the user that many recent phones (e.g. Galaxy S25, Pixel 7 and later) are 64-bit only and will refuse it, and suggest an arm64-v8a build of the app
+
+**Deprecated XAPK output**: a directory decoded with `--keep-splits` is reassembled into an XAPK with all splits re-signed (outputs `DEPRECATION_WARNING:xapk-output`, `SPLIT_SIGNED:`, `XAPK_ASSEMBLED:`). It needs `apksigner` and `zip`, installs with `adb install-multiple`, and will be removed.
 
 ### Phase 6: Verify & Report
 
@@ -425,28 +406,22 @@ and privacy compliance only.
 
 ## Split Merge Details (if applicable)
 
-If the original input was an XAPK and the user chose merged single APK output, include this section:
+If the input was a split bundle, include this section (from `.merged-from-splits.json` and the rebuild output):
 
-| Merge Step | Result |
+| Item | Value |
 |---|---|
-| ABI splits merged | arm64-v8a (3 native libraries) |
-| Resource splits | 2 merged (best-effort), 1 skipped |
-| Feature splits | 0 (or: 1 warning — could not merge) |
-| Manifest cleanup | isSplitRequired, extractNativeLibs→true, com.android.vending.splits.required |
-
-**Merge limitations:**
-- Locale/density resources use defaults from the base APK (compiled `resources.arsc` from splits cannot be fused)
-- `android:extractNativeLibs` was set to `true` — native libs are extracted on install (uses more disk space)
-- Feature module splits (if any) were NOT merged and their functionality may be missing
+| Source bundle | app.xapk |
+| Splits merged (APKEditor 1.4.9) | base.apk, config.arm64_v8a.apk, config.xhdpi.apk |
+| Native ABIs / alignment | arm64-v8a / `ALIGN_OK:13:16k` |
+| OBB files (not in the APK) | none |
 
 ## Output
 
-- Sanitized APK/XAPK: `<path>`
-- Output format: APK (single) / APK (merged from XAPK) / XAPK (split bundle)
-- Signed with: auto-detected debug key / generated debug key / custom keystore
+- Sanitized APK: `<path>`
+- Output format: APK / APK (merged from a split bundle with APKEditor) / XAPK (deprecated `--keep-splits`)
+- Signed with: Android SDK debug key / user-level neutralizer debug key / custom keystore
 - Keystore used: `<path>` (source: `KEYSTORE_SOURCE:` value)
-- Install via: `adb install <path>` (APK / merged APK) or `adb install-multiple <base.apk> <split1.apk> ...` (XAPK)
-- For XAPK: unzip the XAPK and run `adb install-multiple *.apk`
+- Install via: `adb install <path>` (deprecated XAPK: unzip it and run `adb install-multiple *.apk`)
 ```
 
 **Next steps to suggest:**

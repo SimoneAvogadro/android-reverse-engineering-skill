@@ -49,8 +49,11 @@ A Claude Code skill that decompiles Android APK/XAPK/JAR/AAR files, **extracts H
 
 **For SDK neutralization (`/neutralize`):**
 - [apktool](https://apktool.org/) (required) — APK decode/rebuild
-- apksigner or jarsigner (required) — APK signing (apksigner required for XAPK)
-- zip (required for XAPK rebuild)
+- Android SDK Build-Tools (required) — `apksigner` + `zipalign` (35+ for `-P 16`, 16 KB page alignment); `install-dep.sh build-tools --accept-android-sdk-license` installs a pinned, SHA-256-verified 36.0.0 (Android SDK License: https://developer.android.com/studio/terms). zipalign is mandatory for APKs with stored native libraries and `extractNativeLibs="false"`; `jarsigner` is only a v1 fallback for apps targeting SDK < 30
+- [APKEditor](https://github.com/REAndroid/APKEditor) (required for XAPK/APKM/APKS input) — merges split APKs into one APK before decoding; `install-dep.sh apkeditor` installs a pinned, SHA-256-verified release (`APKEDITOR_JAR` overrides its location)
+- zip (only for the deprecated XAPK output)
+
+On Windows, `check-neutralize-deps.ps1`, `decode-apk.ps1` and `rebuild-apk.ps1` are available; `neutralize.sh` requires bash (WSL/Git Bash) for now.
 
 See `plugins/android-reverse-engineering/skills/android-reverse-engineering/references/setup-guide.md` for detailed installation instructions.
 
@@ -158,8 +161,9 @@ bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scri
 bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/install-dep.sh jadx
 bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/install-dep.sh vineflower
 
-# Install ALL neutralizer dependencies at once (java, apktool, apksigner, zip)
-bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/install-dep.sh neutralize-all
+# Install ALL neutralizer dependencies at once (java, apktool, apkeditor, build-tools, zip)
+# (build-tools = Google's Android SDK Build-Tools: read https://developer.android.com/studio/terms first)
+bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/install-dep.sh neutralize-all --accept-android-sdk-license
 
 # Fingerprint an APK/XAPK BEFORE decompiling (Phase 0 triage):
 # framework, HTTP stack, obfuscation level, native libs, notable SDKs
@@ -203,13 +207,11 @@ bash plugins/android-reverse-engineering/skills/sdk-neutralizer/scripts/neutrali
 bash plugins/android-reverse-engineering/skills/sdk-neutralizer/scripts/neutralize.sh app-decoded --all
 bash plugins/android-reverse-engineering/skills/sdk-neutralizer/scripts/rebuild-apk.sh app-decoded --auto-keystore
 
-# XAPK full round-trip — decode preserves splits, rebuild reassembles XAPK
+# XAPK/APKM/APKS input — splits are merged into one APK with APKEditor before decoding
 bash plugins/android-reverse-engineering/skills/sdk-neutralizer/scripts/decode-apk.sh app-bundle.xapk -o app-decoded
-# .xapk-origin/ now contains splits/, manifest.json, metadata.json
-bash plugins/android-reverse-engineering/skills/sdk-neutralizer/scripts/neutralize.sh app-decoded --all --dry-run
 bash plugins/android-reverse-engineering/skills/sdk-neutralizer/scripts/neutralize.sh app-decoded --all
 bash plugins/android-reverse-engineering/skills/sdk-neutralizer/scripts/rebuild-apk.sh app-decoded --auto-keystore
-# → produces app-decoded-neutralized.xapk with all splits re-signed
+# → produces a single app-decoded-neutralized.apk (adb install)
 
 # Replay previous patches after re-decoding
 bash plugins/android-reverse-engineering/skills/sdk-neutralizer/scripts/neutralize.sh app-decoded --replay
@@ -294,10 +296,12 @@ android-reverse-engineering-skill/
 │       │       │   └── smali-patterns.md
 │       │       └── scripts/
 │       │           ├── check-neutralize-deps.sh
+│       │           ├── check-neutralize-deps.ps1
 │       │           ├── decode-apk.sh
-│       │           ├── merge-splits.sh
+│       │           ├── decode-apk.ps1
 │       │           ├── neutralize.sh
 │       │           ├── rebuild-apk.sh
+│       │           ├── rebuild-apk.ps1
 │       │           └── registry-scan.py
 │       └── commands/
 │           ├── decompile.md                # /decompile slash command
@@ -315,6 +319,7 @@ android-reverse-engineering-skill/
 - [Vineflower — Fernflower community fork](https://github.com/Vineflower/vineflower)
 - [dex2jar — DEX to JAR converter](https://github.com/ThexXTURBOXx/dex2jar)
 - [apktool — Android resource decoder](https://apktool.org/)
+- [APKEditor — split APK merger](https://github.com/REAndroid/APKEditor)
 
 ## Acknowledgments
 
@@ -346,3 +351,7 @@ The authors disclaim any liability for misuse of this tool.
 ## License
 
 Apache 2.0 — see [LICENSE](LICENSE)
+
+## Deprecations / future changes
+
+- **XAPK output is deprecated** and will be removed: `decode-apk.sh --keep-splits` (base-only decode) and the XAPK reassembly in `rebuild-apk.sh` it triggers. The rebuild target is always a single APK. XAPK/APKM/APKS **input** stays fully supported: the splits are merged into one APK with APKEditor.

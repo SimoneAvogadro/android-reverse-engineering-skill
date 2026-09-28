@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # install-dep.sh — Install a single dependency for Android reverse engineering
-# Usage: install-dep.sh <dependency>
-# Dependencies: java, jadx, vineflower, dex2jar, apktool, adb, smali, apksigner, zip
-# Compound: neutralize-all (java + apktool + apksigner + zip)
+# Usage: install-dep.sh <dependency> [--accept-android-sdk-license]
+# Run it as your own user, not with sudo: per-user tools go to ~/.local and
+# system packages are installed through sudo by the script itself.
+# Dependencies: java, jadx, vineflower, dex2jar, apktool, apkeditor, build-tools, adb, smali, apksigner, zip
+# Compound: neutralize-all (java + apktool + apkeditor + build-tools + zip)
 #
 # Exit codes:
 #   0 — installed successfully
@@ -17,7 +19,7 @@ fi
 
 usage() {
   cat <<EOF
-Usage: install-dep.sh <dependency>
+Usage: install-dep.sh <dependency> [--accept-android-sdk-license]
 
 Install a dependency required for Android reverse engineering.
 
@@ -27,13 +29,16 @@ Available dependencies:
   vineflower   Vineflower (Fernflower fork) decompiler
   dex2jar      DEX to JAR converter
   apktool      Android resource decoder
+  apkeditor    APKEditor (merges XAPK/APKM/APKS split APKs into one APK)
+  build-tools  Android SDK Build-Tools $BUILD_TOOLS_VERSION (zipalign -P 16, apksigner, aapt2);
+               needs --accept-android-sdk-license (or ACCEPT_ANDROID_SDK_LICENSE=1)
   adb          Android Debug Bridge
   smali        Smali/baksmali assembler/disassembler
   apksigner    Android APK signing tool
   zip          zip archiver (needed for XAPK rebuild)
 
 Compound targets:
-  neutralize-all   Install all SDK neutralizer deps (java, apktool, apksigner, zip)
+  neutralize-all   Install all SDK neutralizer deps (java, apktool, apkeditor, build-tools, zip)
 
 The script detects your OS and package manager, then:
   - Installs directly if possible (brew, or user-local install)
@@ -43,11 +48,46 @@ EOF
   exit 0
 }
 
-if [[ $# -lt 1 || "$1" == "-h" || "$1" == "--help" ]]; then
+# Android SDK Build-Tools — pinned official package from dl.google.com.
+# SHA-256 computed from the archives whose SHA-1 matches Google's repository XML
+# (https://dl.google.com/android/repository/repository2-3.xml):
+#   linux  b0b6376977657e8ad9b969bacf4093601da2c6fb
+#   macosx 199ae0047ee61e842f8ee0c6d3918e44fb9a1f83
+# Keep in sync with install-dep.ps1 (windows archive).
+BUILD_TOOLS_VERSION="36.0.0"
+BUILD_TOOLS_ARCHIVE_TAG="r36"
+BUILD_TOOLS_SHA256_LINUX="5d9ac77fb6ff43d9da518a337b4fcf8f9097113df531d99ccefe80ef7ce8250b"
+BUILD_TOOLS_SHA256_MACOSX="04e7f3a72044de4926fa038fa0e251a37bba1e1c3fb8beab6f8401bfd9eb4bf3"
+ANDROID_SDK_LICENSE_URL="https://developer.android.com/studio/terms"
+
+ACCEPT_ANDROID_SDK_LICENSE="${ACCEPT_ANDROID_SDK_LICENSE:-0}"
+DEP=""
+for arg in "$@"; do
+  case "$arg" in
+    -h|--help) usage ;;
+    --accept-android-sdk-license) ACCEPT_ANDROID_SDK_LICENSE=1 ;;
+    -*) echo "Error: Unknown option $arg" >&2; exit 1 ;;
+    *) DEP="$arg" ;;
+  esac
+done
+if [[ -z "$DEP" ]]; then
   usage
 fi
 
-DEP="$1"
+# Per-user tools go to ~/.local of the user running this script. Under sudo they
+# would land in root's home, so refuse: system packages (Java, zip, ...) are
+# installed through sudo by this script itself, or it prints the exact
+# 'sudo apt-get install ...' command and exits 2.
+case "$DEP" in
+  jadx|vineflower|fernflower|dex2jar|apktool|apkeditor|build-tools|buildtools|zipalign|smali|baksmali|apksigner|neutralize-all)
+    if [[ "$(id -u)" -eq 0 ]] && [[ -n "${SUDO_USER:-}" ]] && [[ "$SUDO_USER" != "root" ]]; then
+      echo "Error: do not run 'install-dep.sh $DEP' with sudo." >&2
+      echo "  It installs per-user tools into ~/.local, which would end up in root's home" >&2
+      echo "  instead of $SUDO_USER's. Run it as $SUDO_USER: it calls sudo itself for system" >&2
+      echo "  packages, or prints the exact sudo command to run first and exits 2." >&2
+      exit 1
+    fi ;;
+esac
 
 # --- Detect environment ---
 OS="unknown"
@@ -179,14 +219,55 @@ download() {
   fi
 }
 
+# --- Helper: SHA-256 of a file (GNU coreutils, macOS shasum, or openssl) ---
+sha256_of() {
+  if command -v sha256sum &>/dev/null; then
+    sha256sum "$1" | awk '{print $1}'
+  elif command -v shasum &>/dev/null; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  elif command -v openssl &>/dev/null; then
+    openssl dgst -sha256 "$1" | awk '{print $NF}'
+  else
+    return 1
+  fi
+}
+
+require_sha256_tool() {
+  if ! command -v sha256sum &>/dev/null && ! command -v shasum &>/dev/null && ! command -v openssl &>/dev/null; then
+    fail "No SHA-256 tool found (sha256sum, shasum or openssl) — refusing to install an unverified download."
+    exit 1
+  fi
+}
+
+# --- Helper: download <url> <dest> <sha256>, 3 attempts; returns 1 if never verified ---
+download_verified() {
+  local url="$1" dest="$2" want="$3" attempt=1 got=""
+  while true; do
+    if download "$url" "$dest"; then
+      got=$(sha256_of "$dest" || true)
+      if [[ "$got" == "$want" ]]; then
+        return 0
+      fi
+      fail "SHA-256 mismatch for $(basename "$url") (expected $want, got ${got:-none})"
+    fi
+    if (( attempt >= 3 )); then
+      rm -f "$dest"
+      return 1
+    fi
+    attempt=$((attempt + 1))
+    info "Retrying download (attempt $attempt/3)..."
+    sleep 2
+  done
+}
+
 # --- Helper: get latest GitHub release tag ---
 gh_latest_tag() {
   local repo="$1"
   local url="https://api.github.com/repos/$repo/releases/latest"
   if command -v curl &>/dev/null; then
-    curl -fsSL "$url" | grep '"tag_name"' | head -1 | sed 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/'
+    curl -fsSL "$url" | grep '"tag_name"' | sed -n 1p | sed 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/'
   elif command -v wget &>/dev/null; then
-    wget -q -O - "$url" | grep '"tag_name"' | head -1 | sed 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/'
+    wget -q -O - "$url" | grep '"tag_name"' | sed -n 1p | sed 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/'
   fi
 }
 
@@ -220,7 +301,7 @@ add_to_profile() {
 install_java() {
   if command -v java &>/dev/null; then
     local ver
-    ver=$(java -version 2>&1 | head -1 | sed -n 's/.*"\([0-9]*\)\..*/\1/p')
+    ver=$(java -version 2>&1 | sed -n 1p | sed -n 's/.*"\([0-9]*\)\..*/\1/p')
     if [[ -n "$ver" ]] && (( ver >= 17 )); then
       ok "Java $ver already installed"
       return 0
@@ -238,7 +319,7 @@ install_java() {
 
   # Verify
   if command -v java &>/dev/null; then
-    ok "Java installed: $(java -version 2>&1 | head -1)"
+    ok "Java installed: $(java -version 2>&1 | sed -n 1p)"
   else
     fail "Java installation may require PATH update."
     if [[ "$PKG_MANAGER" == "brew" ]]; then
@@ -420,7 +501,7 @@ install_dex2jar() {
   if [[ -f "$install_dir/d2j-dex2jar.sh" ]]; then
     bin_dir="$install_dir"
   else
-    bin_dir=$(find "$install_dir" -name "d2j-dex2jar.sh" -exec dirname {} \; | head -1)
+    bin_dir=$(find "$install_dir" -name "d2j-dex2jar.sh" -exec dirname {} \; | sed -n 1p)
   fi
 
   if [[ -z "$bin_dir" ]]; then
@@ -450,7 +531,7 @@ install_apktool() {
 
   if command -v apktool &>/dev/null; then
     local ver_raw
-    ver_raw=$(apktool --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+    ver_raw=$(apktool --version 2>/dev/null | sed -n 1p | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | sed -n 1p)
     if [[ -n "$ver_raw" ]]; then
       local cur_major cur_minor cur_patch
       IFS='.' read -r cur_major cur_minor cur_patch <<< "$ver_raw"
@@ -510,13 +591,207 @@ WRAPPER
 
     # Verify
     local installed_ver
-    installed_ver=$("$HOME/.local/bin/apktool" --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+    installed_ver=$("$HOME/.local/bin/apktool" --version 2>/dev/null | sed -n 1p | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | sed -n 1p)
     if [[ -n "$installed_ver" ]]; then
       ok "apktool $installed_ver installed to $install_dir"
     else
       fail "apktool installation may have failed."
       exit 1
     fi
+  fi
+}
+
+# APKEditor (REAndroid, Apache-2.0) — pinned release, verified by SHA-256.
+# Bump version and hash together (hash = the release asset's sha256 digest).
+APKEDITOR_VERSION="1.4.9"
+APKEDITOR_SHA256="a9cd40df818845456be6d696de6110c89edf4b0a0580cb83438ed6b25a366e67"
+
+install_apkeditor() {
+  if [[ -n "${APKEDITOR_JAR:-}" ]]; then
+    if [[ -f "$APKEDITOR_JAR" ]]; then
+      ok "APKEditor JAR provided via APKEDITOR_JAR: $APKEDITOR_JAR"
+      return 0
+    fi
+    fail "APKEDITOR_JAR is set but the file does not exist: $APKEDITOR_JAR"
+    exit 1
+  fi
+
+  local install_dir="$HOME/.local/share/apkeditor"
+  local jar="$install_dir/APKEditor.jar"
+  local url="https://github.com/REAndroid/APKEditor/releases/download/V${APKEDITOR_VERSION}/APKEditor-${APKEDITOR_VERSION}.jar"
+  local actual=""
+
+  if [[ -f "$jar" ]]; then
+    actual=$(sha256_of "$jar" || true)
+  fi
+  if [[ -n "$actual" ]] && [[ "$actual" == "$APKEDITOR_SHA256" ]]; then
+    ok "APKEditor $APKEDITOR_VERSION already installed: $jar"
+  else
+    require_sha256_tool
+    info "Installing APKEditor $APKEDITOR_VERSION from GitHub releases..."
+    mkdir -p "$install_dir"
+    local tmp_jar
+    tmp_jar=$(mktemp "${TMPDIR:-/tmp}/apkeditor-XXXXXX")
+    local attempt=1
+    while true; do
+      if download "$url" "$tmp_jar"; then
+        actual=$(sha256_of "$tmp_jar" || true)
+        if [[ -z "$actual" ]]; then
+          rm -f "$tmp_jar"
+          fail "No SHA-256 tool found (sha256sum, shasum or openssl) — refusing to install an unverified JAR."
+          exit 1
+        fi
+        if [[ "$actual" == "$APKEDITOR_SHA256" ]]; then
+          break
+        fi
+        fail "SHA-256 mismatch for APKEditor-${APKEDITOR_VERSION}.jar (expected $APKEDITOR_SHA256, got $actual)"
+      fi
+      if (( attempt >= 3 )); then
+        rm -f "$tmp_jar"
+        fail "Could not download a verified APKEditor $APKEDITOR_VERSION JAR."
+        echo "  Manually download: $url" >&2
+        echo "  check that its SHA-256 is $APKEDITOR_SHA256," >&2
+        echo "  then save it as $jar (or point APKEDITOR_JAR at it)." >&2
+        exit 2
+      fi
+      attempt=$((attempt + 1))
+      info "Retrying download (attempt $attempt/3)..."
+      sleep 2
+    done
+    mv -f "$tmp_jar" "$jar"
+    chmod 644 "$jar"
+    ok "APKEditor $APKEDITOR_VERSION installed to $jar (SHA-256 verified)"
+  fi
+
+  # Launcher (honours APKEDITOR_JAR at run time)
+  mkdir -p "$HOME/.local/bin"
+  cat > "$HOME/.local/bin/apkeditor" <<'WRAPPER'
+#!/usr/bin/env bash
+exec java -jar "${APKEDITOR_JAR:-$HOME/.local/share/apkeditor/APKEditor.jar}" "$@"
+WRAPPER
+  chmod +x "$HOME/.local/bin/apkeditor"
+
+  export PATH="$HOME/.local/bin:$PATH"
+  add_to_profile 'export PATH="$HOME/.local/bin:$PATH"'
+}
+
+# Latest build-tools version directory under an SDK root (numeric sort, BSD-safe)
+latest_build_tools_dir() {
+  local sdk="$1" v
+  [[ -n "$sdk" ]] && [[ -d "$sdk/build-tools" ]] || return 1
+  v=$(ls -1 "$sdk/build-tools" 2>/dev/null | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)
+  [[ -n "$v" ]] && [[ -d "$sdk/build-tools/$v" ]] || return 1
+  echo "$sdk/build-tools/$v"
+}
+
+zipalign_has_P() {
+  local usage_text
+  usage_text=$("$1" 2>&1 || true)
+  case "$usage_text" in *"-P <pagesize"*) return 0 ;; esac
+  return 1
+}
+
+print_android_sdk_license_notice() {
+  cat >&2 <<EOF
+
+[LICENSE] Android SDK Build-Tools $BUILD_TOOLS_VERSION are distributed by Google under the
+          Android Software Development Kit License Agreement:
+            $ANDROID_SDK_LICENSE_URL
+          Read it before installing. To accept it and install, re-run with
+            install-dep.sh build-tools --accept-android-sdk-license
+          (or set ACCEPT_ANDROID_SDK_LICENSE=1).
+
+EOF
+}
+
+install_build_tools() {
+  # Already satisfied: an SDK build-tools dir with a -P capable zipalign and apksigner
+  local sdk bt
+  for sdk in "${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}" "$HOME/Android/Sdk" "$HOME/Library/Android/sdk" "$HOME/.local/share/android-sdk"; do
+    bt=$(latest_build_tools_dir "$sdk" || true)
+    if [[ -n "$bt" ]] && [[ -x "$bt/zipalign" ]] && [[ -x "$bt/apksigner" ]] && zipalign_has_P "$bt/zipalign"; then
+      ok "Android build-tools with zipalign -P and apksigner already installed: $bt"
+      return 0
+    fi
+  done
+
+  print_android_sdk_license_notice
+  if [[ "$ACCEPT_ANDROID_SDK_LICENSE" != "1" ]]; then
+    fail "Android SDK license not accepted — build-tools not installed."
+    return 2
+  fi
+  info "Android SDK license accepted via --accept-android-sdk-license / ACCEPT_ANDROID_SDK_LICENSE=1"
+
+  # Prefer sdkmanager when an SDK root is configured
+  local sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+  local sdkm=""
+  if [[ -n "$sdk_root" ]]; then
+    if [[ -x "$sdk_root/cmdline-tools/latest/bin/sdkmanager" ]]; then
+      sdkm="$sdk_root/cmdline-tools/latest/bin/sdkmanager"
+    elif command -v sdkmanager &>/dev/null; then
+      sdkm=$(command -v sdkmanager)
+    fi
+  fi
+  if [[ -n "$sdkm" ]]; then
+    info "Installing build-tools;$BUILD_TOOLS_VERSION with sdkmanager into $sdk_root..."
+    if { yes 2>/dev/null || true; } | "$sdkm" --sdk_root="$sdk_root" --install "build-tools;$BUILD_TOOLS_VERSION"; then
+      if [[ -x "$sdk_root/build-tools/$BUILD_TOOLS_VERSION/zipalign" ]]; then
+        ok "build-tools $BUILD_TOOLS_VERSION installed with sdkmanager: $sdk_root/build-tools/$BUILD_TOOLS_VERSION"
+        return 0
+      fi
+    fi
+    info "sdkmanager did not install build-tools — falling back to direct download."
+  fi
+
+  local host sha
+  case "$OS" in
+    linux) host="linux"; sha="$BUILD_TOOLS_SHA256_LINUX" ;;
+    macos) host="macosx"; sha="$BUILD_TOOLS_SHA256_MACOSX" ;;
+    *) manual "Install Android SDK Build-Tools $BUILD_TOOLS_VERSION with Android Studio's SDK Manager." ;;
+  esac
+  require_tool "unzip"
+  require_sha256_tool
+
+  local url="https://dl.google.com/android/repository/build-tools_${BUILD_TOOLS_ARCHIVE_TAG}_${host}.zip"
+  local tmp_dir
+  tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/build-tools-XXXXXX")
+  info "Downloading $url..."
+  if ! download_verified "$url" "$tmp_dir/bt.zip" "$sha"; then
+    rm -rf "$tmp_dir"
+    fail "Could not download a verified build-tools $BUILD_TOOLS_VERSION archive."
+    echo "  Install it with Android Studio's SDK Manager, or download $url" >&2
+    echo "  (SHA-256 $sha) and unzip it to ~/.local/share/android-sdk/build-tools/$BUILD_TOOLS_VERSION" >&2
+    exit 2
+  fi
+  unzip -q "$tmp_dir/bt.zip" -d "$tmp_dir/x"
+  local top
+  top=$(ls -1 "$tmp_dir/x" | sed -n 1p)
+  if [[ -z "$top" ]] || [[ ! -f "$tmp_dir/x/$top/zipalign" ]]; then
+    rm -rf "$tmp_dir"
+    fail "Unexpected build-tools archive layout."
+    exit 1
+  fi
+  local dest="$HOME/.local/share/android-sdk/build-tools/$BUILD_TOOLS_VERSION"
+  mkdir -p "$(dirname "$dest")"
+  rm -rf "$dest"
+  mv "$tmp_dir/x/$top" "$dest"
+  rm -rf "$tmp_dir"
+
+  # Launchers (wrappers keep the tools next to their lib/ and lib64/ directories)
+  mkdir -p "$HOME/.local/bin"
+  local t
+  for t in zipalign apksigner aapt2; do
+    printf '#!/usr/bin/env bash\nexec "%s/%s" "$@"\n' "$dest" "$t" > "$HOME/.local/bin/$t"
+    chmod +x "$HOME/.local/bin/$t"
+  done
+  export PATH="$HOME/.local/bin:$PATH"
+  add_to_profile 'export PATH="$HOME/.local/bin:$PATH"'
+
+  if zipalign_has_P "$dest/zipalign"; then
+    ok "Android build-tools $BUILD_TOOLS_VERSION installed to $dest (SHA-256 verified)"
+  else
+    fail "build-tools installed to $dest but its zipalign does not run on this system."
+    exit 1
   fi
 }
 
@@ -614,9 +889,9 @@ WRAPPER
 
   # Look for the smali JAR
   local smali_jar
-  smali_jar=$(find "$install_dir" -name "smali*.jar" -not -name "*baksmali*" | head -1)
+  smali_jar=$(find "$install_dir" -name "smali*.jar" -not -name "*baksmali*" | sed -n 1p)
   local baksmali_jar
-  baksmali_jar=$(find "$install_dir" -name "baksmali*.jar" | head -1)
+  baksmali_jar=$(find "$install_dir" -name "baksmali*.jar" | sed -n 1p)
 
   if [[ -n "$smali_jar" ]]; then
     cat > "$HOME/.local/bin/smali" <<WRAPPER
@@ -660,7 +935,7 @@ install_apksigner() {
     local bt_dir="$ANDROID_HOME/build-tools"
     if [[ -d "$bt_dir" ]]; then
       local latest_bt
-      latest_bt=$(ls -1 "$bt_dir" 2>/dev/null | sort -V | tail -1)
+      latest_bt=$(ls -1 "$bt_dir" 2>/dev/null | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)
       if [[ -n "$latest_bt" ]] && [[ -f "$bt_dir/$latest_bt/apksigner" ]]; then
         mkdir -p "$HOME/.local/bin"
         ln -sf "$bt_dir/$latest_bt/apksigner" "$HOME/.local/bin/apksigner"
@@ -677,7 +952,7 @@ install_apksigner() {
     local bt_dir="$ANDROID_SDK_ROOT/build-tools"
     if [[ -d "$bt_dir" ]]; then
       local latest_bt
-      latest_bt=$(ls -1 "$bt_dir" 2>/dev/null | sort -V | tail -1)
+      latest_bt=$(ls -1 "$bt_dir" 2>/dev/null | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)
       if [[ -n "$latest_bt" ]] && [[ -f "$bt_dir/$latest_bt/apksigner" ]]; then
         mkdir -p "$HOME/.local/bin"
         ln -sf "$bt_dir/$latest_bt/apksigner" "$HOME/.local/bin/apksigner"
@@ -749,18 +1024,24 @@ install_zip() {
 install_neutralize_all() {
   echo "=== Installing all SDK Neutralizer dependencies ==="
   echo
-  local failed=()
-  for dep_fn in install_java install_apktool install_apksigner install_zip; do
+  local failed=() needs_license=false rc
+  for dep_fn in install_java install_apktool install_apkeditor install_build_tools install_zip; do
     dep_name="${dep_fn#install_}"
     info "--- $dep_name ---"
-    if ! $dep_fn; then
+    rc=0
+    $dep_fn || rc=$?
+    if [[ $rc -ne 0 ]]; then
       failed+=("$dep_name")
+      if [[ "$dep_fn" == "install_build_tools" ]] && [[ $rc -eq 2 ]]; then needs_license=true; fi
     fi
     echo
   done
 
   if [[ ${#failed[@]} -gt 0 ]]; then
     fail "Failed to install: ${failed[*]}"
+    if [[ "$needs_license" == true ]] && [[ ${#failed[@]} -eq 1 ]]; then
+      exit 2
+    fi
     exit 1
   fi
   ok "All SDK Neutralizer dependencies installed."
@@ -776,6 +1057,10 @@ case "$DEP" in
   vineflower|fernflower)  install_vineflower ;;
   dex2jar)     install_dex2jar ;;
   apktool)     install_apktool ;;
+  apkeditor)   install_apkeditor ;;
+  build-tools|buildtools|zipalign)
+    rc=0; install_build_tools || rc=$?
+    exit $rc ;;
   adb)         install_adb ;;
   smali|baksmali)  install_smali ;;
   apksigner)   install_apksigner ;;
@@ -783,7 +1068,7 @@ case "$DEP" in
   neutralize-all)  install_neutralize_all ;;
   *)
     echo "Error: Unknown dependency '$DEP'" >&2
-    echo "Available: java, jadx, vineflower, dex2jar, apktool, adb, smali, apksigner, zip" >&2
+    echo "Available: java, jadx, vineflower, dex2jar, apktool, apkeditor, build-tools, adb, smali, apksigner, zip" >&2
     echo "Compound: neutralize-all" >&2
     exit 1
     ;;
