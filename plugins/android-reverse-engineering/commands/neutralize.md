@@ -93,7 +93,7 @@ Never try to remove, disable or work around a protection: only report it.
 
 ### Step 5: Identify targets — Registry Scan
 
-The decoded directory contains smali bytecode. Use `registry-scan.py` to match against the SDK registry (33 SDKs, 201 entry points, 210 ad operations).
+The decoded directory contains smali bytecode. Use `registry-scan.py` to match against the SDK registry (34 SDKs, 208 entry points, 241 ad operations).
 
 **5a. Run registry scan:**
 

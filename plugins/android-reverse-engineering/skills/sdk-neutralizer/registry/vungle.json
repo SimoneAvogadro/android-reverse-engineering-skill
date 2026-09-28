@@ -2,12 +2,14 @@
   "$schema": "./_schema.json",
   "sdk_id": "vungle",
   "display_name": "Vungle / Liftoff",
-  "description": "Vungle (Liftoff) ad SDK",
+  "description": "Vungle (Liftoff) ad SDK across all three package generations: current com.vungle.ads (7.x, artifact com.vungle:vungle-ads), legacy com.vungle.warren (Vungle SDK 6.x 'Warren', artifact com.vungle:publisher-sdk-android 6.x) and older com.vungle.publisher (SDK 4.x/5.x, same artifact). Warren 6.x has no InterstitialAd/RewardedAd classes: full-screen interstitial and rewarded ads are driven by the static com.vungle.warren.Vungle facade (init/loadAd/playAd/canPlayAd); banners go through com.vungle.warren.Banners and native ads through com.vungle.warren.NativeAd. SDK 4.x/5.x centres on the com.vungle.publisher.VunglePub singleton. Real apps still ship the old SDKs (e.g. Bad Piggies HD bundles com.vungle.warren, 587 classes).",
   "vendor": "Liftoff",
   "category": "ads",
-  "known_versions": [],
+  "known_versions": ["6.12.1", "6.9.1", "5.3.2", "5.3.0"],
   "packages": [
-    "com.vungle.ads"
+    "com.vungle.ads",
+    "com.vungle.warren",
+    "com.vungle.publisher"
   ],
   "obfuscation": {
     "public_api": "readable",
@@ -18,7 +20,19 @@
       {
         "class": "com.vungle.ads.VungleAds",
         "methods": [
-          { "name": "init", "signature": "*", "stub": "return-void", "note": "Main SDK init" }
+          { "name": "init", "signature": "*", "stub": "return-void", "note": "Main SDK init (7.x com.vungle.ads)" }
+        ]
+      },
+      {
+        "class": "com.vungle.warren.Vungle",
+        "methods": [
+          { "name": "init", "signature": "*", "stub": "return-void", "note": "Legacy 6.x (Warren) main init; 3 static void overloads (String/Collection key, Context, InitCallback[, VungleSettings]); the InitCallback never fires once stubbed, which keeps the app from starting ad ops. isInitialized() then returns false on its own" }
+        ]
+      },
+      {
+        "class": "com.vungle.publisher.VunglePub",
+        "methods": [
+          { "name": "init", "signature": "*", "stub": "return-void", "note": "Legacy 4.x/5.x init; instance method init(Context, String appId, String[] placements, VungleInitListener) (plus 4.x Context/String[] overloads), all void; the VungleInitListener never fires once stubbed. VunglePub.getInstance() itself is protected (see protected_patterns)" }
         ]
       }
     ],
@@ -45,6 +59,40 @@
           { "name": "load", "signature": "*", "stub": "return-void" },
           { "name": "destroy", "signature": "*", "stub": "return-void" }
         ]
+      },
+      {
+        "class": "com.vungle.warren.Vungle",
+        "methods": [
+          { "name": "loadAd", "signature": "*", "stub": "return-void", "note": "Legacy 6.x interstitial/rewarded load; 3 static void overloads (String[,String],[AdConfig],LoadAdCallback)" },
+          { "name": "playAd", "signature": "*", "stub": "return-void", "note": "Legacy 6.x interstitial/rewarded show; 2 static void overloads (String[,String],AdConfig,PlayAdCallback)" },
+          { "name": "canPlayAd", "signature": "*", "stub": "return-false/0", "note": "Legacy 6.x canPlayAd(String[,String]) -> boolean" },
+          { "name": "setIncentivizedFields", "signature": "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V", "stub": "return-void", "note": "Sets rewarded-ad user metadata (user id / titles / body / button text); void" }
+        ]
+      },
+      {
+        "class": "com.vungle.warren.Banners",
+        "methods": [
+          { "name": "loadBanner", "signature": "*", "stub": "return-void", "note": "Legacy 6.x banner load; 3 static void overloads (String[,String],AdSize|BannerAdConfig,LoadAdCallback)" },
+          { "name": "getBanner", "signature": "*", "stub": "return-null", "note": "3 static overloads returning com.vungle.warren.VungleBanner; documented @Nullable (returns null when no ad is cached), so callers already null-check. Safe to null now that loadBanner is stubbed" },
+          { "name": "canPlayAd", "signature": "*", "stub": "return-false/0", "note": "canPlayAd(String[,String],AdSize) -> boolean" }
+        ]
+      },
+      {
+        "class": "com.vungle.warren.NativeAd",
+        "methods": [
+          { "name": "loadAd", "signature": "*", "stub": "return-void", "note": "Legacy 6.x native ad load; 2 instance void overloads (AdConfig[,String],NativeAdListener)" },
+          { "name": "canPlayAd", "signature": "()Z", "stub": "return-false/0", "note": "Instance canPlayAd() -> boolean" },
+          { "name": "destroy", "signature": "()V", "stub": "return-void" }
+        ]
+      },
+      {
+        "class": "com.vungle.publisher.VunglePub",
+        "methods": [
+          { "name": "loadAd", "signature": "*", "stub": "return-void", "note": "Legacy 4.x/5.x instance loadAd(String placement) -> void" },
+          { "name": "playAd", "signature": "*", "stub": "return-void", "note": "Legacy 4.x/5.x instance playAd(String, AdConfig) -> void" },
+          { "name": "isAdPlayable", "signature": "*", "stub": "return-false/0", "note": "Legacy 4.x/5.x instance isAdPlayable(String) -> boolean (4.x also has a no-arg overload)" },
+          { "name": "closeFlexViewAd", "signature": "(Ljava/lang/String;)Z", "stub": "return-false/0", "note": "5.x FlexView close -> boolean" }
+        ]
       }
     ],
     "deep_patterns": []
@@ -52,16 +100,59 @@
   "manifest_components": [
     {
       "type": "activity",
-      "class": "com.vungle.warren.ui.VungleActivity",
+      "class": "com.vungle.ads.internal.ui.VungleActivity",
       "action": "disable",
-      "note": "Legacy Vungle (warren) ad activity"
+      "note": "New (7.x) Vungle ads full-screen activity"
     },
     {
       "type": "activity",
-      "class": "com.vungle.ads.internal.ui.VungleActivity",
+      "class": "com.vungle.warren.ui.VungleActivity",
       "action": "disable",
-      "note": "New Vungle ads activity"
+      "note": "Legacy 6.x (Warren) full-screen ad activity (present in Bad Piggies HD and every publisher-sdk-android 6.9.1-6.12.1 manifest)"
+    },
+    {
+      "type": "provider",
+      "class": "com.vungle.warren.utility.VungleProvider",
+      "action": "disable",
+      "note": "Legacy 6.x auto-init ContentProvider (authority ${applicationId}.vungle-provider) used to grab the application Context at startup; present in every 6.9.1-6.12.1 manifest and in Bad Piggies HD"
+    },
+    {
+      "type": "receiver",
+      "class": "com.vungle.warren.NetworkProviderReceiver",
+      "action": "disable",
+      "note": "Legacy 6.x CONNECTIVITY_CHANGE receiver that resumes downloads/reporting when the network returns (6.9.x manifest; dropped in 6.12.x)"
+    },
+    {
+      "type": "activity",
+      "class": "com.vungle.publisher.VideoFullScreenAdActivity",
+      "action": "disable",
+      "note": "Legacy 4.x/5.x video ad activity (publisher-sdk-android 5.3.x manifest)"
+    },
+    {
+      "type": "activity",
+      "class": "com.vungle.publisher.MraidFullScreenAdActivity",
+      "action": "disable",
+      "note": "Legacy 4.x/5.x MRAID (playable/HTML) ad activity (5.3.x manifest)"
+    },
+    {
+      "type": "activity",
+      "class": "com.vungle.publisher.FlexViewAdActivity",
+      "action": "disable",
+      "note": "Legacy 5.x FlexView ad activity (5.3.x manifest)"
     }
   ],
-  "protected_patterns": []
+  "protected_patterns": [
+    {
+      "pattern": "com.vungle.publisher.VunglePub.getInstance*",
+      "reason": "Static getInstance() returns the @NonNull VunglePub singleton that the app then calls init/loadAd/playAd on; returning null would NPE at the first dereference. Its ad traffic is cut off by stubbing the instance methods (init/loadAd/playAd) instead"
+    },
+    {
+      "pattern": "com.vungle.publisher.VunglePub.getGlobalAdConfig*",
+      "reason": "Returns the @NonNull global AdConfig object the app configures (setters) before/after init; null would NPE. Harmless once init is stubbed"
+    },
+    {
+      "pattern": "*.isInitialized()*",
+      "reason": "Vungle.isInitialized() / VunglePub.isInitialized() return a boolean that is naturally false once init is stubbed; leave them working so callers correctly see the SDK as not initialised rather than being forced true"
+    }
+  ]
 }

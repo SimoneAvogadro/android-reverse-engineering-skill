@@ -1,0 +1,83 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "adcolony",
+  "display_name": "AdColony",
+  "description": "AdColony full-screen video / interstitial and rewarded ad network (now part of Digital Turbine). The SDK package name remained com.adcolony.sdk after the acquisition.",
+  "vendor": "Digital Turbine (AdColony)",
+  "category": "ads",
+  "known_versions": ["4.8.2", "4.6.0"],
+  "packages": [
+    "com.adcolony.sdk"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "obfuscated",
+    "internal_prefix": "single-letter alphanumeric (a, b, c, a0, b1, c1 ...) in the same com.adcolony.sdk package as the public API"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "com.adcolony.sdk.AdColony",
+        "methods": [
+          { "name": "configure", "signature": "*", "stub": "return-false/0", "note": "Main SDK init — all overloads (Activity/Application x with/without AdColonyAppOptions, incl. varargs). Real return type boolean; false = init failed → SDK disabled." }
+        ]
+      }
+    ],
+    "ad_operations": [
+      {
+        "class": "com.adcolony.sdk.AdColony",
+        "methods": [
+          { "name": "requestInterstitial", "signature": "*", "stub": "return-false/0", "note": "Static boolean (both overloads). Returning false means the interstitial request is not queued, so onRequestFilled never fires." },
+          { "name": "requestAdView", "signature": "*", "stub": "return-false/0", "note": "Static boolean (both overloads) — banner/MREC AdView request." },
+          { "name": "setRewardListener", "signature": "*", "stub": "return-false/0", "note": "Static boolean — rewarded-video flow; false = listener not registered." }
+        ]
+      },
+      {
+        "class": "com.adcolony.sdk.AdColonyInterstitial",
+        "methods": [
+          { "name": "show", "signature": "*", "stub": "return-false/0", "note": "Instance boolean — displays the fullscreen ad." },
+          { "name": "isExpired", "signature": "*", "stub": "return-false/0", "note": "Instance boolean — matches real return type; safe because requestInterstitial is stubbed so no live object is produced." }
+        ]
+      },
+      {
+        "class": "com.adcolony.sdk.AdColonyAdView",
+        "methods": [
+          { "name": "destroy", "signature": "*", "stub": "return-false/0", "note": "Instance boolean — tears down a banner/MREC AdView." }
+        ]
+      }
+    ],
+    "deep_patterns": []
+  },
+  "manifest_components": [
+    {
+      "type": "activity",
+      "class": "com.adcolony.sdk.AdColonyInterstitialActivity",
+      "action": "disable",
+      "note": "Fullscreen interstitial / rewarded video display activity (present in AAR manifest for 4.6.0 through 4.8.2)."
+    },
+    {
+      "type": "activity",
+      "class": "com.adcolony.sdk.AdColonyAdViewActivity",
+      "action": "disable",
+      "note": "Expanded banner / MREC AdView display activity (present in AAR manifest for 4.6.0 through 4.8.2)."
+    }
+  ],
+  "protected_patterns": [
+    {
+      "pattern": "com.adcolony.sdk.AdColony.getAppOptions*",
+      "reason": "Returns the AdColonyAppOptions object apps commonly chain-call (setUserID/setGDPRRequired) — null would cause NPE."
+    },
+    {
+      "pattern": "com.adcolony.sdk.AdColony.getRewardListener*",
+      "reason": "Returns the registered AdColonyRewardListener — some integrations dereference it; null would cause NPE."
+    },
+    {
+      "pattern": "com.adcolony.sdk.AdColony.getZone*",
+      "reason": "Returns an AdColonyZone object the app may query for reward/zone metadata — null would cause NPE."
+    },
+    {
+      "pattern": "*.getSDKVersion*",
+      "reason": "Returns the SDK version String; mediation adapters may parse it — do not null."
+    }
+  ]
+}

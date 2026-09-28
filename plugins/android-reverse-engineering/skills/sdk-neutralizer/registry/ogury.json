@@ -2,26 +2,47 @@
   "$schema": "./_schema.json",
   "sdk_id": "ogury",
   "display_name": "Ogury",
-  "description": "Ogury ad and consent SDK",
+  "description": "Ogury ad and consent SDK. Two package generations share one artifact (co.ogury:ogury-sdk on https://maven.ogury.co): the current com.ogury.* API (com.ogury.sdk.Ogury.start), and the legacy io.presage.* Presage SDK that Exodus still fingerprints as 'io.presage'. From at least 4.3.x through 4.9.1 both namespaces ship in the same AAR: the readable public entry points and ad classes live under io.presage.* (io.presage.Presage, io.presage.common.PresageSdk, io.presage.ads.Ads, io.presage.interstitial.*), while internals are obfuscated with French cheese class names (Camembert*, Reblochon*, ...). 5.x split the SDK into co.ogury.module.* AARs and dropped the io.presage.* public API.",
   "vendor": "Ogury",
   "category": "ads",
-  "known_versions": [],
+  "known_versions": ["4.9.1", "4.3.13"],
   "packages": [
     "com.ogury.sdk",
     "com.ogury.ed",
     "com.ogury.cm",
-    "com.ogury.core"
+    "com.ogury.core",
+    "io.presage"
   ],
   "obfuscation": {
     "public_api": "readable",
-    "internals": "obfuscated"
+    "internals": "obfuscated",
+    "internal_prefix": "io.presage.* internals use French-cheese class names (io.presage.Camembert*, Reblochon*, EpoissesdeBourgogne, ...) plus 1-2 char names (io.presage.a, io.presage.br); names change between releases"
   },
   "targets": {
     "entry_points": [
       {
         "class": "com.ogury.sdk.Ogury",
         "methods": [
-          { "name": "start", "signature": "*", "stub": "return-void", "note": "Main SDK init" }
+          { "name": "start", "signature": "*", "stub": "return-void", "note": "Main SDK init (current com.ogury.* API)" }
+        ]
+      },
+      {
+        "class": "io.presage.Presage",
+        "methods": [
+          { "name": "start", "signature": "(Ljava/lang/String;Landroid/content/Context;)V", "stub": "return-void", "note": "Legacy init: apps call Presage.getInstance().start(apiKey, context). Instance method, void. getInstance() is protected (returns the singleton), so only start is stubbed" }
+        ]
+      },
+      {
+        "class": "io.presage.common.PresageSdk",
+        "methods": [
+          { "name": "init", "signature": "(Landroid/content/Context;Ljava/lang/String;)V", "stub": "return-void", "note": "Legacy static init entry (Context, apiKey), void. getAdsSdkVersion() is protected" },
+          { "name": "setMediationName", "signature": "(Ljava/lang/String;)V", "stub": "return-void", "note": "Static void mediation tag setter" }
+        ]
+      },
+      {
+        "class": "io.presage.ads.Ads",
+        "methods": [
+          { "name": "initialize", "signature": "(Landroid/content/Context;Ljava/lang/String;)V", "stub": "return-void", "note": "Legacy static ads-module init (Context, apiKey), void" }
         ]
       }
     ],
@@ -48,10 +69,125 @@
           { "name": "loadAd", "signature": "*", "stub": "return-void" },
           { "name": "destroy", "signature": "*", "stub": "return-void" }
         ]
+      },
+      {
+        "class": "io.presage.interstitial.PresageInterstitial",
+        "methods": [
+          { "name": "load", "signature": "()V", "stub": "return-void", "note": "Legacy interstitial load (instance, void)" },
+          { "name": "show", "signature": "()V", "stub": "return-void", "note": "Legacy interstitial show (instance, void)" },
+          { "name": "isLoaded", "signature": "()Z", "stub": "return-false/0", "note": "Returns false — matches an ad that never loads" },
+          { "name": "setInterstitialCallback", "signature": "(Lio/presage/interstitial/PresageInterstitialCallback;)V", "stub": "return-void", "note": "Callback stays unset; the app's ad-lifecycle callbacks never fire, which is the intent" },
+          { "name": "setOnAdClickedCallback", "signature": "(Lcom/ogury/ed/OguryAdClickCallback;)V", "stub": "return-void", "note": "Void click-callback setter (added ~4.9.1; absent in 4.3.x)" }
+        ]
+      },
+      {
+        "class": "io.presage.interstitial.optinvideo.PresageOptinVideo",
+        "methods": [
+          { "name": "load", "signature": "()V", "stub": "return-void", "note": "Legacy rewarded/optin-video load (instance, void)" },
+          { "name": "show", "signature": "()V", "stub": "return-void", "note": "Legacy optin-video show (instance, void)" },
+          { "name": "isLoaded", "signature": "()Z", "stub": "return-false/0", "note": "Returns false — matches an ad that never loads" },
+          { "name": "setOptinVideoCallback", "signature": "(Lio/presage/interstitial/optinvideo/PresageOptinVideoCallback;)V", "stub": "return-void" },
+          { "name": "setOnAdClickedCallback", "signature": "(Lcom/ogury/ed/OguryAdClickCallback;)V", "stub": "return-void", "note": "Void click-callback setter (added ~4.9.1)" },
+          { "name": "setUserId", "signature": "(Ljava/lang/String;)V", "stub": "return-void", "note": "Void SSV user-id setter" }
+        ]
       }
     ],
     "deep_patterns": []
   },
-  "manifest_components": [],
-  "protected_patterns": []
+  "manifest_components": [
+    {
+      "type": "service",
+      "class": "io.presage.core.service.SdkService",
+      "action": "disable",
+      "note": "Legacy Presage background service (io.presage AAR manifest 4.x)"
+    },
+    {
+      "type": "service",
+      "class": "io.presage.core.service.SdkJobService",
+      "action": "disable",
+      "note": "Legacy Presage JobScheduler service"
+    },
+    {
+      "type": "service",
+      "class": "io.presage.core.service.SMJobService",
+      "action": "disable",
+      "note": "Legacy Presage JobScheduler service (state-machine jobs)"
+    },
+    {
+      "type": "activity",
+      "class": "io.presage.core.activity.SBActivity",
+      "action": "disable",
+      "note": "Legacy Presage ad-display activity"
+    },
+    {
+      "type": "receiver",
+      "class": "io.presage.common.profig.schedule.ProfigAlarmReceiver",
+      "action": "disable",
+      "note": "Legacy 'Profig' config-refresh alarm receiver"
+    },
+    {
+      "type": "receiver",
+      "class": "io.presage.core.receiver.AlarmReceiver",
+      "action": "disable",
+      "note": "Legacy Presage scheduling receiver"
+    },
+    {
+      "type": "receiver",
+      "class": "io.presage.core.receiver.BootCompletedReceiver",
+      "action": "disable",
+      "note": "BOOT_COMPLETED auto-start receiver"
+    },
+    {
+      "type": "receiver",
+      "class": "io.presage.core.receiver.UserPresentReceiver",
+      "action": "disable",
+      "note": "USER_PRESENT (screen-unlock) trigger receiver"
+    },
+    {
+      "type": "receiver",
+      "class": "io.presage.core.receiver.TimeSetReceiver",
+      "action": "disable",
+      "note": "TIME_SET trigger receiver"
+    },
+    {
+      "type": "receiver",
+      "class": "io.presage.core.receiver.CarrierConfigChangedReceiver",
+      "action": "disable",
+      "note": "Carrier-config-change trigger receiver"
+    },
+    {
+      "type": "receiver",
+      "class": "io.presage.core.receiver.NextAlarmClockChangedReceiver",
+      "action": "disable",
+      "note": "NEXT_ALARM_CLOCK_CHANGED trigger receiver"
+    },
+    {
+      "type": "receiver",
+      "class": "io.presage.core.receiver.EventReminderReceiver",
+      "action": "disable",
+      "note": "Calendar event-reminder trigger receiver"
+    },
+    {
+      "type": "receiver",
+      "class": "io.presage.core.receiver.BluetoothReceiver",
+      "action": "disable",
+      "note": "Bluetooth state-change trigger receiver"
+    },
+    {
+      "type": "receiver",
+      "class": "io.presage.core.receiver.PackageFullyRemovedReceiver",
+      "action": "disable",
+      "note": "PACKAGE_FULLY_REMOVED trigger receiver"
+    }
+  ],
+  "protected_patterns": [
+    {
+      "pattern": "*.getInstance()*",
+      "reason": "io.presage.Presage.getInstance() returns the non-null Presage singleton; apps use the chained Presage.getInstance().start(apiKey, context) pattern, so a null return would NPE before start() runs. start() is stubbed instead"
+    },
+    {
+      "pattern": "*.getAdsSdkVersion()*",
+      "reason": "io.presage.common.PresageSdk.getAdsSdkVersion() returns a non-null constant version String used by mediation adapters; null could NPE"
+    }
+  ]
 }
