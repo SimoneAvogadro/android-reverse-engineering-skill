@@ -1,0 +1,260 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "rovio-beacon",
+  "display_name": "Rovio Beacon (in-house ads/analytics)",
+  "description": "Rovio's in-house ad + analytics/attribution layer shared across the Angry Birds / Bad Piggies app family. Wraps per-network adapters (AdMob, AppLovin, IronSource, Unity, Vungle, Mintegral, FB AN, AdColony) behind the AdsSdk facade AND ships its own WebView/MRAID house-ad path (WebViewAd, AdsWebView, WebViewAdFactory, MRAIDController, VideoPlayer) that can serve direct/house interstitials with NO third-party SDK — this is why interstitials still appear after every network SDK is neutralized. Category is 'ads', but the package also carries analytics/attribution (Attribution, DeviceInfo, ad-impression tracking beacons). Stub the AdsSdk facade + WebView path to stop ads; the analytics/attribution collectors are almost all listener-callback or object-getter shaped and are protected (see protected_patterns) to avoid init/license/callback hangs.",
+  "vendor": "Rovio",
+  "category": "ads",
+  "in_house_wrapper": true,
+  "known_versions": [
+    "2.4.3379"
+  ],
+  "packages": [
+    "com.rovio.beacon"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "readable"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "com.rovio.beacon.ads.AdsSdk",
+        "methods": [
+          {
+            "name": "load",
+            "signature": "(Ljava/lang/String;)V",
+            "stub": "return-void",
+            "note": "PRIMARY choke point. Reflection facade the IL2CPP game drives (ctor builds com.rovio.beacon.ads.<AdType>Sdk). load() dispatches to the chosen adapter's load on the UI thread; stubbing it means no adapter — network OR WebView house ad — ever becomes ready, so onAdReady never fires and show() is never reached. Hang-free: interstitials are fire-and-forget, the game does not block on ad-ready."
+          },
+          {
+            "name": "show",
+            "signature": "()V",
+            "stub": "return-void",
+            "note": "Secondary net: dispatches adapter show() on UI thread. CALLBACK-HANG RISK — if the game gates gameplay resume on the onAdHidden callback and calls show() blindly, stubbing show() suppresses the ad AND the onAdHidden bridge. In practice show() is only called after onAdReady, which never fires once load() is stubbed, so it is not reached. load() is the safe primary; keep this as belt-and-suspenders."
+          },
+          {
+            "name": "hide",
+            "signature": "()V",
+            "stub": "return-void",
+            "note": "Dispatches adapter hide() on UI thread; void, safe."
+          },
+          {
+            "name": "poke",
+            "signature": "()V",
+            "stub": "return-void",
+            "note": "Refresh/cache trigger dispatched on UI thread; void, safe."
+          }
+        ]
+      }
+    ],
+    "ad_operations": [
+      {
+        "class": "com.rovio.beacon.ads.WebViewAdFactory",
+        "methods": [
+          {
+            "name": "preloadWebViewAd",
+            "signature": "(Ljava/lang/String;Ljava/lang/String;Landroid/app/Activity;Lcom/rovio/beacon/ads/WebViewAdFactory$LoadListener;)V",
+            "stub": "return-void",
+            "note": "WebView house-ad path: preloads/caches the ad HTML/URL. Stubbing stops the direct/house interstitial that survives network-SDK neutralization. instance() and takeWebViewAd() are deliberately NOT stubbed (protected) — they return objects the caller dereferences."
+          }
+        ]
+      },
+      {
+        "class": "com.rovio.beacon.ads.WebViewAd",
+        "methods": [
+          {
+            "name": "loadHtml",
+            "signature": "(Ljava/lang/String;)V",
+            "stub": "return-void",
+            "note": "Loads house-ad HTML into the ad WebView."
+          },
+          {
+            "name": "loadUrl",
+            "signature": "(Ljava/lang/String;)V",
+            "stub": "return-void",
+            "note": "Loads house-ad URL into the ad WebView."
+          },
+          {
+            "name": "show",
+            "signature": "()V",
+            "stub": "return-void",
+            "note": "Displays the WebView overlay ad. Package-private; patcher matches by name."
+          },
+          {
+            "name": "hide",
+            "signature": "(Z)V",
+            "stub": "return-void"
+          },
+          {
+            "name": "reload",
+            "signature": "()V",
+            "stub": "return-void"
+          },
+          {
+            "name": "destroy",
+            "signature": "()V",
+            "stub": "return-void"
+          }
+        ]
+      },
+      {
+        "class": "com.rovio.beacon.ads.MRAIDController",
+        "methods": [
+          {
+            "name": "open",
+            "signature": "(Ljava/lang/String;)V",
+            "stub": "return-void",
+            "note": "MRAID click-through: opens external/store URL from ad JS."
+          },
+          {
+            "name": "expand",
+            "signature": "(Ljava/lang/String;Z)V",
+            "stub": "return-void",
+            "note": "MRAID expand-to-fullscreen."
+          },
+          {
+            "name": "playVideo",
+            "signature": "(Ljava/lang/String;)V",
+            "stub": "return-void",
+            "note": "MRAID video playback."
+          },
+          {
+            "name": "resize",
+            "signature": "(IIIILjava/lang/String;Z)V",
+            "stub": "return-void"
+          }
+        ]
+      },
+      {
+        "class": "com.rovio.beacon.ads.WebViewAd$RovioTrackingInterface",
+        "methods": [
+          {
+            "name": "rovioTrackEvent",
+            "signature": "(Ljava/lang/String;Ljava/lang/String;)V",
+            "stub": "return-void",
+            "note": "ANALYTICS: @JavascriptInterface tracking bridge called from ad JS to fire impression/click beacons. Fire-and-forget void — safe to stub."
+          },
+          {
+            "name": "rovioPlayVideo",
+            "signature": "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
+            "stub": "return-void",
+            "note": "@JavascriptInterface ad video launch from JS."
+          },
+          {
+            "name": "rovioLaunchApp",
+            "signature": "(Ljava/lang/String;)Z",
+            "stub": "return-false/0",
+            "note": "@JavascriptInterface click-through app/store launch from ad JS. Returns Z; false = launch suppressed."
+          }
+        ]
+      },
+      {
+        "class": "com.rovio.beacon.ads.WebViewWrapper",
+        "methods": [
+          {
+            "name": "onRovioTrackEvent",
+            "signature": "(Ljava/lang/String;Ljava/lang/String;)V",
+            "stub": "return-void",
+            "note": "ANALYTICS: concrete ad-tracking beacon sender (listener impl). Fire-and-forget void."
+          }
+        ]
+      },
+      {
+        "class": "com.rovio.beacon.ads.VideoPlayer",
+        "methods": [
+          {
+            "name": "emitTrackEvent",
+            "signature": "(Ljava/lang/String;)V",
+            "stub": "return-void",
+            "note": "ANALYTICS: video-ad tracking beacon emitter (private, matched by name). Fire-and-forget void."
+          }
+        ]
+      },
+      {
+        "class": "com.rovio.beacon.ads.VideoPlayerBridge$VideoPlayerWrapper",
+        "methods": [
+          {
+            "name": "signalVideoTrackEvents",
+            "signature": "(Ljava/util/ArrayList;)V",
+            "stub": "return-void",
+            "note": "ANALYTICS: fires the batch of VAST-style video ad tracking beacons. Fire-and-forget void."
+          },
+          {
+            "name": "signalEndCardTrackEvents",
+            "signature": "(Ljava/util/ArrayList;)V",
+            "stub": "return-void",
+            "note": "ANALYTICS: fires end-card tracking beacons. Fire-and-forget void."
+          }
+        ]
+      }
+    ],
+    "deep_patterns": []
+  },
+  "manifest_components": [
+    {
+      "type": "activity",
+      "class": "com.rovio.beacon.ads.AdsActivity",
+      "action": "disable",
+      "note": "Beacon WebView-ad host activity. NOT declared in the Bad Piggies 2.4.3379 manifest (the WebView house ad renders as an overlay inside the Unity activity, which is why component-disabling alone never stopped it — the code-path stubs above are what matter). Listed for other Rovio titles that do declare it; a no-op where absent. Not declared in Bad Piggies (WebView ad is an in-activity overlay); present in other Rovio titles."
+    }
+  ],
+  "protected_patterns": [
+    {
+      "pattern": "*.getActivity()*",
+      "reason": "Globals.getActivity() returns the host Activity dereferenced all over Beacon and the game — null causes NPE."
+    },
+    {
+      "pattern": "*.getRootViewGroup()*",
+      "reason": "Globals.getRootViewGroup() returns a ViewGroup the ad views attach to — null causes NPE."
+    },
+    {
+      "pattern": "*.getInstance()*",
+      "reason": "Singleton accessor safety — null return causes NPE if dereferenced."
+    },
+    {
+      "pattern": "*.instance()*",
+      "reason": "WebViewAdFactory.instance() singleton accessor — null causes NPE in callers."
+    },
+    {
+      "pattern": "*.takeWebViewAd()*",
+      "reason": "WebViewAdFactory.takeWebViewAd() returns a WebViewAd the caller dereferences — stubbing to null risks NPE. Neutralize via preloadWebViewAd instead."
+    },
+    {
+      "pattern": "*.checkLicense()*",
+      "reason": "Attribution.checkLicense(LicenseCheckListener) is an LVL license verification whose result is delivered via a listener. CALLBACK-HANG / launch-gate risk: stubbing it means the listener never fires and the app may block or refuse to run. Left intact."
+    },
+    {
+      "pattern": "*.getInstallReferrer()*",
+      "reason": "Attribution/DeviceInfo getInstallReferrer(listener): install-attribution result delivered via listener. Callback-gated — stubbing may hang a caller awaiting the callback. Left intact."
+    },
+    {
+      "pattern": "*.getAsyncIdentifiers()*",
+      "reason": "DeviceInfo.getAsyncIdentifiers(AsyncIdsListener): advertising/device-ID collection delivered via listener. Callback-gated — stubbing may hang a caller awaiting the callback. Left intact."
+    },
+    {
+      "pattern": "*.getPlatformIdentifiers()*",
+      "reason": "DeviceInfo.getPlatformIdentifiers() returns an identifier string the caller parses — stubbing to null risks NPE / parse failure. Left intact."
+    },
+    {
+      "pattern": "*.getDataPath()*",
+      "reason": "DeviceInfo.getDataPath() returns a filesystem path the game needs — not a tracker. Left intact."
+    },
+    {
+      "pattern": "*.onAdReady()*",
+      "reason": "AdsSdk.onAdReady(Z) forwards to the game's listener so it learns the ad is ready — the bridge the game may resume on. Never stub."
+    },
+    {
+      "pattern": "*.onAdHidden()*",
+      "reason": "AdsSdk.onAdHidden(Z) is the ad-dismissed callback the game resumes gameplay on. Never stub."
+    },
+    {
+      "pattern": "*.onAdShown()*",
+      "reason": "AdsSdk.onAdShown() listener bridge to the game. Never stub."
+    },
+    {
+      "pattern": "*.onAdError()*",
+      "reason": "AdsSdk.onAdError(...) tells the game the ad failed so it proceeds — never stub, it is the graceful-fallback path."
+    }
+  ]
+}
