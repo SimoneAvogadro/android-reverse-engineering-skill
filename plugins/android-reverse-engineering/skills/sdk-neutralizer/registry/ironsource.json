@@ -2,11 +2,14 @@
   "$schema": "./_schema.json",
   "sdk_id": "ironsource",
   "display_name": "IronSource / LevelPlay",
-  "description": "IronSource mediation SDK (also known as LevelPlay)",
+  "description": "IronSource / Unity LevelPlay meta-mediation SDK. This is a MEDIATOR: the app calls it and it drives every bundled ad-network adapter (com.ironsource.adapters.* / com.unity3d.mediation.adapters.*: AdMob, AppLovin, Unity, Vungle, Mintegral, Pangle, etc.), so neutralizing its init/bridge stops the whole waterfall. Three eras coexist and must all be covered because the patcher matches by method NAME inside the named class and derives the stub from the real return type; a class/method absent in a given APK is simply skipped. MODERN unified API: com.unity3d.mediation.LevelPlay (init) + LevelPlayInterstitialAd/LevelPlayRewardedAd/LevelPlayBannerAdView. MODERN manual-load API: com.unity3d.ironsourceads.IronSourceAds (init) + interstitial/rewarded/banner AdLoader + Ad classes. UNITY BRIDGE (IL2CPP game-facing lever): com.ironsource.unity.androidbridge.LevelPlayBridge + its InterstitialAd/RewardedAd/BannerAd. LEGACY: com.ironsource.mediationsdk.IronSource (the old init/loadInterstitial/... facade is gone in 8.x/9.x, but the ISDemandOnly facade and the legacy facade on older APKs remain). All init methods take an Init/LevelPlayInitListener whose onInitSuccess/onInitFailed never fires once init is stubbed (see protected_patterns + notes); load/show are stubbed too so no ad ever surfaces.",
   "vendor": "Unity (IronSource)",
   "category": "ads_mediation",
-  "known_versions": ["8.11.0"],
+  "known_versions": ["9.0.0", "8.11.0", "8.4.0", "7.9.0"],
   "packages": [
+    "com.unity3d.ironsourceads",
+    "com.unity3d.mediation",
+    "com.ironsource.unity",
     "com.ironsource.mediationsdk",
     "com.ironsource.sdk",
     "com.ironsource.adapters"
@@ -14,22 +17,152 @@
   "obfuscation": {
     "public_api": "readable",
     "internals": "obfuscated",
-    "internal_prefix": "single-letter"
+    "internal_prefix": "single-letter (com.ironsource.* internals) / Kotlin metadata on the public LevelPlay+IronSourceAds classes"
   },
   "targets": {
     "entry_points": [
       {
+        "class": "com.unity3d.ironsourceads.IronSourceAds",
+        "methods": [
+          { "name": "init", "signature": "(Landroid/content/Context;Lcom/unity3d/ironsourceads/InitRequest;Lcom/unity3d/ironsourceads/InitListener;)V", "stub": "return-void", "note": "MODERN manual-load API init (static void, 8.x+). InitListener.onInitializationCompleted/onInitializationFailed never fires once stubbed — an app that gates ad requests on the init callback simply never requests ads; it should not hang the app itself" },
+          { "name": "setConsent", "signature": "(Z)V", "stub": "return-void" },
+          { "name": "setMetaData", "signature": "*", "stub": "return-void", "note": "(String,String) and (String,List) overloads, both void" },
+          { "name": "enableDebugMode", "signature": "(Z)V", "stub": "return-void" }
+        ]
+      },
+      {
+        "class": "com.unity3d.mediation.LevelPlay",
+        "methods": [
+          { "name": "init", "signature": "(Landroid/content/Context;Lcom/unity3d/mediation/LevelPlayInitRequest;Lcom/unity3d/mediation/LevelPlayInitListener;)V", "stub": "return-void", "note": "MODERN unified-API init (static void, 8.x+). LevelPlayInitListener.onInitSuccess/onInitFailed never fires once stubbed" },
+          { "name": "setConsent", "signature": "(Z)V", "stub": "return-void" },
+          { "name": "setMetaData", "signature": "*", "stub": "return-void", "note": "(String,String) and (String,List), both void" },
+          { "name": "setNetworkData", "signature": "(Ljava/lang/String;Lorg/json/JSONObject;)V", "stub": "return-void" },
+          { "name": "setAdaptersDebug", "signature": "(Z)V", "stub": "return-void" },
+          { "name": "setSegment", "signature": "(Lcom/unity3d/mediation/segment/LevelPlaySegment;)V", "stub": "return-void" },
+          { "name": "addImpressionDataListener", "signature": "(Lcom/unity3d/mediation/impression/LevelPlayImpressionDataListener;)V", "stub": "return-void", "note": "Registers an impression-revenue (ILRD) listener that exfiltrates per-impression revenue; stub void so it never subscribes" },
+          { "name": "setDynamicUserId", "signature": "(Ljava/lang/String;)Z", "stub": "return-false/0", "note": "Returns boolean success — false is a valid 'not set' result" }
+        ]
+      },
+      {
+        "class": "com.ironsource.unity.androidbridge.LevelPlayBridge",
+        "methods": [
+          { "name": "setConsent", "signature": "(Z)V", "stub": "return-void", "note": "Unity IL2CPP bridge config; the game calls these through JNI" },
+          { "name": "setMetaData", "signature": "*", "stub": "return-void", "note": "(String,String) and (String,String[]), both void" },
+          { "name": "setNetworkData", "signature": "(Ljava/lang/String;Ljava/lang/String;)V", "stub": "return-void" },
+          { "name": "setSegment", "signature": "(Ljava/lang/String;)V", "stub": "return-void" },
+          { "name": "setAdaptersDebug", "signature": "(Z)V", "stub": "return-void" },
+          { "name": "validateIntegration", "signature": "()V", "stub": "return-void" },
+          { "name": "launchTestSuite", "signature": "()V", "stub": "return-void" },
+          { "name": "setCCPA", "signature": "(Z)V", "stub": "return-void" },
+          { "name": "setCOPPA", "signature": "(Z)V", "stub": "return-void" },
+          { "name": "setGDPRConsents", "signature": "(Ljava/lang/String;)V", "stub": "return-void" },
+          { "name": "setPluginData", "signature": "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V", "stub": "return-void" },
+          { "name": "setDynamicUserId", "signature": "(Ljava/lang/String;)Z", "stub": "return-false/0" }
+        ]
+      },
+      {
         "class": "com.ironsource.mediationsdk.IronSource",
         "methods": [
-          { "name": "init", "signature": "*", "stub": "return-void", "note": "Main SDK init — all overloads" }
+          { "name": "init", "signature": "*", "stub": "return-void", "note": "LEGACY main init — all overloads (present <=7.x/8.x; removed on 9.x where the class keeps only the ISDemandOnly facade). Init callbacks won't fire once stubbed" },
+          { "name": "initISDemandOnly", "signature": "*", "stub": "return-void", "note": "LEGACY DemandOnly init" }
         ]
       }
     ],
     "ad_operations": [
       {
+        "class": "com.unity3d.ironsourceads.interstitial.InterstitialAdLoader",
+        "methods": [
+          { "name": "loadAd", "signature": "(Lcom/unity3d/ironsourceads/interstitial/InterstitialAdRequest;Lcom/unity3d/ironsourceads/interstitial/InterstitialAdLoaderListener;)V", "stub": "return-void", "note": "MODERN static loader (void). InterstitialAdLoaderListener.onInterstitialAdLoadFailed/onInterstitialAdLoaded never fires once stubbed — no ad object is delivered" }
+        ]
+      },
+      {
+        "class": "com.unity3d.ironsourceads.interstitial.InterstitialAd",
+        "methods": [
+          { "name": "show", "signature": "(Landroid/app/Activity;)V", "stub": "return-void" },
+          { "name": "isReadyToShow", "signature": "()Z", "stub": "return-false/0", "note": "Report no ad ready" }
+        ]
+      },
+      {
+        "class": "com.unity3d.ironsourceads.rewarded.RewardedAdLoader",
+        "methods": [
+          { "name": "loadAd", "signature": "(Lcom/unity3d/ironsourceads/rewarded/RewardedAdRequest;Lcom/unity3d/ironsourceads/rewarded/RewardedAdLoaderListener;)V", "stub": "return-void", "note": "MODERN static loader (void)" }
+        ]
+      },
+      {
+        "class": "com.unity3d.ironsourceads.rewarded.RewardedAd",
+        "methods": [
+          { "name": "show", "signature": "(Landroid/app/Activity;)V", "stub": "return-void" },
+          { "name": "isReadyToShow", "signature": "()Z", "stub": "return-false/0" }
+        ]
+      },
+      {
+        "class": "com.unity3d.ironsourceads.banner.BannerAdLoader",
+        "methods": [
+          { "name": "loadAd", "signature": "(Lcom/unity3d/ironsourceads/banner/BannerAdRequest;Lcom/unity3d/ironsourceads/banner/BannerAdLoaderListener;)V", "stub": "return-void", "note": "MODERN static loader (void)" }
+        ]
+      },
+      {
+        "class": "com.unity3d.ironsourceads.banner.BannerAdView",
+        "methods": [
+          { "name": "destroy", "signature": "*", "stub": "return-void", "note": "Present in the AAR; absent in some builds and simply skipped" }
+        ]
+      },
+      {
+        "class": "com.unity3d.mediation.interstitial.LevelPlayInterstitialAd",
+        "methods": [
+          { "name": "loadAd", "signature": "()V", "stub": "return-void", "note": "MODERN unified-API instance load (void)" },
+          { "name": "showAd", "signature": "*", "stub": "return-void", "note": "(Activity) and (Activity,String) overloads, both void" },
+          { "name": "isAdReady", "signature": "()Z", "stub": "return-false/0" }
+        ]
+      },
+      {
+        "class": "com.unity3d.mediation.rewarded.LevelPlayRewardedAd",
+        "methods": [
+          { "name": "loadAd", "signature": "()V", "stub": "return-void" },
+          { "name": "showAd", "signature": "*", "stub": "return-void", "note": "(Activity) and (Activity,String), both void" },
+          { "name": "isAdReady", "signature": "()Z", "stub": "return-false/0" }
+        ]
+      },
+      {
+        "class": "com.unity3d.mediation.banner.LevelPlayBannerAdView",
+        "methods": [
+          { "name": "loadAd", "signature": "()V", "stub": "return-void" },
+          { "name": "destroy", "signature": "()V", "stub": "return-void" },
+          { "name": "pauseAutoRefresh", "signature": "()V", "stub": "return-void" },
+          { "name": "resumeAutoRefresh", "signature": "()V", "stub": "return-void" }
+        ]
+      },
+      {
+        "class": "com.ironsource.unity.androidbridge.InterstitialAd",
+        "methods": [
+          { "name": "loadAd", "signature": "()V", "stub": "return-void", "note": "Unity IL2CPP bridge — the game calls this through JNI. Load callbacks are forwarded to Unity and never fire once stubbed" },
+          { "name": "showAd", "signature": "(Ljava/lang/String;)V", "stub": "return-void" },
+          { "name": "isAdReady", "signature": "()Z", "stub": "return-false/0" }
+        ]
+      },
+      {
+        "class": "com.ironsource.unity.androidbridge.RewardedAd",
+        "methods": [
+          { "name": "loadAd", "signature": "()V", "stub": "return-void", "note": "Unity IL2CPP bridge" },
+          { "name": "showAd", "signature": "(Ljava/lang/String;)V", "stub": "return-void" },
+          { "name": "isAdReady", "signature": "()Z", "stub": "return-false/0" }
+        ]
+      },
+      {
+        "class": "com.ironsource.unity.androidbridge.BannerAd",
+        "methods": [
+          { "name": "load", "signature": "()V", "stub": "return-void", "note": "Unity IL2CPP bridge (banner load is named 'load' here, not 'loadAd')" },
+          { "name": "showAd", "signature": "()V", "stub": "return-void" },
+          { "name": "hideAd", "signature": "()V", "stub": "return-void" },
+          { "name": "destroy", "signature": "()V", "stub": "return-void" },
+          { "name": "pauseAutoRefresh", "signature": "()V", "stub": "return-void" },
+          { "name": "resumeAutoRefresh", "signature": "()V", "stub": "return-void" }
+        ]
+      },
+      {
         "class": "com.ironsource.mediationsdk.IronSource",
         "methods": [
-          { "name": "loadInterstitial", "signature": "*", "stub": "return-void" },
+          { "name": "loadInterstitial", "signature": "*", "stub": "return-void", "note": "LEGACY facade (present <=8.x)" },
           { "name": "showInterstitial", "signature": "*", "stub": "return-void" },
           { "name": "loadRewardedVideo", "signature": "*", "stub": "return-void" },
           { "name": "showRewardedVideo", "signature": "*", "stub": "return-void" },
@@ -37,8 +170,18 @@
           { "name": "destroyBanner", "signature": "*", "stub": "return-void" },
           { "name": "setConsent", "signature": "*", "stub": "return-void" },
           { "name": "setMetaData", "signature": "*", "stub": "return-void" },
-          { "name": "isInterstitialReady", "signature": "*", "stub": "return-false/0", "note": "Always report no ad available" },
-          { "name": "isRewardedVideoAvailable", "signature": "*", "stub": "return-false/0", "note": "Always report no ad available" }
+          { "name": "isInterstitialReady", "signature": "*", "stub": "return-false/0", "note": "Report no ad available" },
+          { "name": "isRewardedVideoAvailable", "signature": "*", "stub": "return-false/0", "note": "Report no ad available" },
+          { "name": "loadISDemandOnlyInterstitial", "signature": "*", "stub": "return-void", "note": "LEGACY DemandOnly API — still present on 9.x IronSource class" },
+          { "name": "showISDemandOnlyInterstitial", "signature": "*", "stub": "return-void" },
+          { "name": "loadISDemandOnlyRewardedVideo", "signature": "*", "stub": "return-void" },
+          { "name": "showISDemandOnlyRewardedVideo", "signature": "*", "stub": "return-void" },
+          { "name": "loadISDemandOnlyBanner", "signature": "*", "stub": "return-void" },
+          { "name": "destroyISDemandOnlyBanner", "signature": "*", "stub": "return-void" },
+          { "name": "isISDemandOnlyInterstitialReady", "signature": "(Ljava/lang/String;)Z", "stub": "return-false/0", "note": "Report no ad available" },
+          { "name": "isISDemandOnlyRewardedVideoAvailable", "signature": "(Ljava/lang/String;)Z", "stub": "return-false/0" },
+          { "name": "setMediationType", "signature": "*", "stub": "return-void" },
+          { "name": "setAdRevenueData", "signature": "*", "stub": "return-void" }
         ]
       }
     ],
@@ -51,7 +194,12 @@
       {
         "package_glob": "com.ironsource.adapters.**",
         "rule": "stub_all_void",
-        "note": "Third-party ad network adapters bundled with IronSource"
+        "note": "Third-party ad-network adapters bundled with legacy IronSource — the meta-mediator waterfall"
+      },
+      {
+        "package_glob": "com.unity3d.mediation.adapters.**",
+        "rule": "stub_all_void",
+        "note": "Third-party ad-network adapters bundled with modern LevelPlay — the meta-mediator waterfall (depth 3, version-fragile)"
       }
     ]
   },
@@ -69,16 +217,76 @@
       "note": "SDK controller activity"
     },
     {
+      "type": "activity",
+      "class": "com.ironsource.sdk.controller.OpenUrlActivity",
+      "action": "disable",
+      "note": "Opens ad click-through / store URLs"
+    },
+    {
+      "type": "activity",
+      "class": "com.unity3d.ironsourceads.internal.services.InlineStoreActivity",
+      "action": "disable",
+      "note": "Modern IronSourceAds in-app store / click-through activity"
+    },
+    {
+      "type": "activity",
+      "class": "com.ironsource.mediationsdk.testSuite.TestSuiteActivity",
+      "action": "disable",
+      "note": "LevelPlay ad test-suite activity"
+    },
+    {
       "type": "provider",
       "class": "com.ironsource.lifecycle.IronsourceLifecycleProvider",
       "action": "disable",
-      "note": "Lifecycle auto-init provider"
+      "note": "Legacy lifecycle auto-init provider"
+    },
+    {
+      "type": "provider",
+      "class": "com.ironsource.lifecycle.LevelPlayActivityLifecycleProvider",
+      "action": "disable",
+      "note": "Modern LevelPlay lifecycle auto-init provider"
     }
   ],
   "protected_patterns": [
     {
       "pattern": "*.getActivity()*",
       "reason": "Returns Activity reference — null causes NPE"
+    },
+    {
+      "pattern": "*.getInstance()*",
+      "reason": "Returns an SDK singleton/instance the app immediately dereferences — null would cause NPE. Never stub"
+    },
+    {
+      "pattern": "*.getReward()*",
+      "reason": "LevelPlayRewardedAd.getReward / bridge RewardedAd.getReward return a @NonNull LevelPlayReward the app reads for the reward name/amount — null would cause NPE"
+    },
+    {
+      "pattern": "*.getAdInfo()*",
+      "reason": "Returns the InterstitialAdInfo/RewardedAdInfo/BannerAdInfo the app inspects — null could cause NPE"
+    },
+    {
+      "pattern": "*.getListener()*",
+      "reason": "Returns the app's own registered ad listener — must be returned intact"
+    },
+    {
+      "pattern": "*.getBannerListener()*",
+      "reason": "LevelPlayBannerAdView.getBannerListener returns the app's own listener — must be returned intact"
+    },
+    {
+      "pattern": "*.getAdId()*",
+      "reason": "Bridge ad classes return their ad instance id string; the Unity layer keys ad instances on it — null would break dispatch"
+    },
+    {
+      "pattern": "*.getSdkVersion()*",
+      "reason": "Returns a constant version String used for gating/reporting — null could break callers"
+    },
+    {
+      "pattern": "*.getReward(*",
+      "reason": "Overload guard: bridge/unified getReward(String) also returns a @NonNull reward object"
+    },
+    {
+      "pattern": "callback-bridge: LevelPlayBridge.onInitSuccess / onInitFailed / onImpressionSuccess and the *Ad*Listener.on* forwarders",
+      "reason": "These forward init/impression results from the SDK back up to the Unity/app layer. They are the callback bridge — stubbing them (rather than the load/init that triggers them) is what causes the 'callback never fires -> app waits forever' hang. Never stub. Documentary only (does not match the name-blocklist regex)"
     }
   ]
 }

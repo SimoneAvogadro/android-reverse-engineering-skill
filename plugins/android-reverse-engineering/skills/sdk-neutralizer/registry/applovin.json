@@ -2,10 +2,10 @@
   "$schema": "./_schema.json",
   "sdk_id": "applovin",
   "display_name": "AppLovin / MAX",
-  "description": "AppLovin SDK and MAX mediation platform",
+  "description": "AppLovin SDK and MAX mediation platform (meta-mediator: adapters at com/applovin/mediation/adapters/* drive AdMob, Meta, Unity, Vungle, etc.). Neutralizing init + MAX load/show stops the whole waterfall.",
   "vendor": "AppLovin",
   "category": "ads_mediation",
-  "known_versions": ["13.3.0"],
+  "known_versions": ["11.5.1", "13.3.0", "13.6.2"],
   "packages": [
     "com.applovin.sdk",
     "com.applovin.mediation",
@@ -22,16 +22,52 @@
       {
         "class": "com.applovin.sdk.AppLovinSdk",
         "methods": [
-          { "name": "initialize", "signature": "*", "stub": "return-void", "note": "Main SDK init" },
-          { "name": "initializeSdk", "signature": "*", "stub": "return-void" }
+          { "name": "initialize", "signature": "*", "stub": "return-void", "note": "Main SDK init — initialize(AppLovinSdkInitializationConfiguration, SdkInitializationListener)V confirmed in 13.6.2. Stubbed to void; the pipeline cannot yet emit onSdkInitialized(), so the load/show stubs below are the real safety net." },
+          { "name": "initializeSdk", "signature": "*", "stub": "return-void", "note": "Legacy init entry point (older versions)" }
         ]
       }
     ],
     "ad_operations": [
       {
+        "class": "com.applovin.mediation.ads.MaxInterstitialAd",
+        "methods": [
+          { "name": "loadAd", "signature": "*", "stub": "return-void", "note": "loadAd()V — real class is under .mediation.ads (current SDK). Stub so the SDK's own no-fill path runs; listener bridge protected." },
+          { "name": "showAd", "signature": "*", "stub": "return-void", "note": "All showAd(...) overloads return void" },
+          { "name": "isReady", "signature": "*", "stub": "return-false/0", "note": "isReady()Z → false" },
+          { "name": "destroy", "signature": "*", "stub": "return-void" }
+        ]
+      },
+      {
+        "class": "com.applovin.mediation.ads.MaxRewardedAd",
+        "methods": [
+          { "name": "loadAd", "signature": "*", "stub": "return-void", "note": "loadAd()V. getInstance() is a singleton factory returning the ad object — NOT stubbed here (protected); we stub the instance loadAd/showAd instead." },
+          { "name": "showAd", "signature": "*", "stub": "return-void", "note": "All showAd(...) overloads return void" },
+          { "name": "isReady", "signature": "*", "stub": "return-false/0", "note": "isReady()Z → false" },
+          { "name": "destroy", "signature": "*", "stub": "return-void" }
+        ]
+      },
+      {
+        "class": "com.applovin.mediation.ads.MaxAppOpenAd",
+        "methods": [
+          { "name": "loadAd", "signature": "*", "stub": "return-void", "note": "loadAd()V — app-open format under .mediation.ads" },
+          { "name": "showAd", "signature": "*", "stub": "return-void", "note": "All showAd(...) overloads return void" },
+          { "name": "isReady", "signature": "*", "stub": "return-false/0", "note": "isReady()Z → false" },
+          { "name": "destroy", "signature": "*", "stub": "return-void" }
+        ]
+      },
+      {
+        "class": "com.applovin.mediation.ads.MaxAdView",
+        "methods": [
+          { "name": "loadAd", "signature": "*", "stub": "return-void", "note": "loadAd()V — MAX banner/MREC, real class is .mediation.ads.MaxAdView in current SDK (11.x/13.x)" },
+          { "name": "destroy", "signature": "*", "stub": "return-void" },
+          { "name": "startAutoRefresh", "signature": "*", "stub": "return-void" },
+          { "name": "stopAutoRefresh", "signature": "*", "stub": "return-void" }
+        ]
+      },
+      {
         "class": "com.applovin.mediation.MaxInterstitialAd",
         "methods": [
-          { "name": "loadAd", "signature": "*", "stub": "return-void" },
+          { "name": "loadAd", "signature": "*", "stub": "return-void", "note": "Legacy location (no .ads.) — harmless if absent; patcher skips missing classes" },
           { "name": "showAd", "signature": "*", "stub": "return-void" },
           { "name": "isReady", "signature": "*", "stub": "return-false/0" },
           { "name": "destroy", "signature": "*", "stub": "return-void" }
@@ -40,7 +76,7 @@
       {
         "class": "com.applovin.mediation.MaxRewardedAd",
         "methods": [
-          { "name": "loadAd", "signature": "*", "stub": "return-void" },
+          { "name": "loadAd", "signature": "*", "stub": "return-void", "note": "Legacy location (no .ads.) — harmless if absent. getInstance factory protected globally." },
           { "name": "showAd", "signature": "*", "stub": "return-void" },
           { "name": "isReady", "signature": "*", "stub": "return-false/0" },
           { "name": "destroy", "signature": "*", "stub": "return-void" }
@@ -49,7 +85,7 @@
       {
         "class": "com.applovin.mediation.MaxAdView",
         "methods": [
-          { "name": "loadAd", "signature": "*", "stub": "return-void" },
+          { "name": "loadAd", "signature": "*", "stub": "return-void", "note": "Legacy banner location directly under .mediation (older versions) — harmless if absent" },
           { "name": "destroy", "signature": "*", "stub": "return-void" },
           { "name": "startAutoRefresh", "signature": "*", "stub": "return-void" },
           { "name": "stopAutoRefresh", "signature": "*", "stub": "return-void" }
@@ -65,7 +101,7 @@
       {
         "package_glob": "com.applovin.mediation.adapters.**",
         "rule": "stub_all_void",
-        "note": "Third-party adapters bundled with MAX"
+        "note": "Third-party network adapters bundled with MAX (the mediation waterfall)"
       }
     ]
   },
@@ -78,9 +114,33 @@
     },
     {
       "type": "activity",
+      "class": "com.applovin.adview.AppLovinFullscreenImmersiveActivity",
+      "action": "disable",
+      "note": "Fullscreen immersive ad display activity (13.x)"
+    },
+    {
+      "type": "activity",
       "class": "com.applovin.sdk.AppLovinWebViewActivity",
       "action": "disable",
       "note": "WebView-based ad activity"
+    },
+    {
+      "type": "service",
+      "class": "com.applovin.impl.adview.activity.FullscreenAdService",
+      "action": "disable",
+      "note": "Fullscreen ad lifecycle service"
+    },
+    {
+      "type": "activity",
+      "class": "com.applovin.mediation.hybridAds.MaxHybridMRecAdActivity",
+      "action": "disable",
+      "note": "MAX hybrid MREC ad display activity"
+    },
+    {
+      "type": "activity",
+      "class": "com.applovin.mediation.hybridAds.MaxHybridNativeAdActivity",
+      "action": "disable",
+      "note": "MAX hybrid native ad display activity"
     },
     {
       "type": "provider",
@@ -93,6 +153,18 @@
     {
       "pattern": "*.getActivity()*",
       "reason": "Returns Activity reference — null causes NPE"
+    },
+    {
+      "pattern": "*.getInstance()*",
+      "reason": "MaxRewardedAd.getInstance / AppLovinSdk.getInstance are singleton/factory getters returning the ad or SDK object the app then calls loadAd/showAd on. Nulling them causes NPE — protect the getter and stub the instance load/show methods instead. Also blocklists 'getInstance' so no target ever stubs it."
+    },
+    {
+      "pattern": "com.applovin.mediation.Max*Listener->*",
+      "reason": "Ad listener bridge (MaxAdListener/MaxRewardedAdListener/MaxAdViewAdListener/MaxAppOpenAdListener callbacks: onAdLoaded, onAdLoadFailed, onAdDisplayed, onAdHidden, onUserRewarded, etc.). These callbacks must fire so the SDK's own no-fill/dismiss path runs after load/show are stubbed — never stub callback methods."
+    },
+    {
+      "pattern": "com.applovin.mediation.adapter.listeners.**->*",
+      "reason": "Adapter->MAX listener bridge (MaxInterstitialAdapterListener, MaxRewardedAdapterListener, etc.). Not covered by the adapters.** deep pattern; must stay live to deliver load/show results."
     }
   ]
 }
