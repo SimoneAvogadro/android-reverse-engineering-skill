@@ -27,7 +27,7 @@
     },
     "category": {
       "type": "string",
-      "enum": ["ads", "analytics", "attribution", "crash_reporting", "ads_mediation", "social"]
+      "enum": ["ads", "analytics", "attribution", "crash_reporting", "ads_mediation", "social", "consent"]
     },
     "known_versions": {
       "type": "array",
@@ -113,8 +113,9 @@
     },
     "method_target": {
       "type": "object",
-      "required": ["name", "stub"],
+      "required": ["name"],
       "additionalProperties": false,
+      "description": "A method to neutralize. Provide EITHER 'stub' (replace body with a trivial no-op/constant return, derived from the return type by neutralize.sh) OR 'inject' (replace body with a purpose-built code sequence that actively does something — see 'inject'). 'inject' takes precedence over 'stub'.",
       "properties": {
         "name": {
           "type": "string",
@@ -127,7 +128,17 @@
         "stub": {
           "type": "string",
           "enum": ["return-void", "return-false/0", "return-null"],
-          "description": "Stub type to apply"
+          "description": "Trivial stub type. neutralize.sh actually derives the concrete stub from the method's smali return type; this field documents intent."
+        },
+        "inject": {
+          "type": "string",
+          "enum": [
+            "consent-reject-all",
+            "consent-info-update-success",
+            "return-const-1",
+            "return-const-3"
+          ],
+          "description": "CODE INJECTION (distinct from 'stub': the replacement body actively executes logic, it does not merely return). Kinds: 'consent-reject-all' — for the static void UMP form-show entry point loadAndShowConsentFormIfRequired(Activity,OnConsentFormDismissedListener): writes IAB TCF v2.2 reject-all values (gdprApplies=1, all-zero consent/LI keys, reject-all TCString) to the DEFAULT SharedPreferences, then invokes the passed OnConsentFormDismissedListener.onConsentFormDismissed(null) so the app proceeds as if the user chose 'reject all' — the dialog is never shown. 'consent-info-update-success' — for the instance void requestConsentInfoUpdate(Activity,ConsentRequestParameters,OnConsentInfoUpdateSuccessListener,OnConsentInfoUpdateFailureListener): immediately fires the success listener (no network) so the app continues its consent flow. 'return-const-1' / 'return-const-3' — return a fixed int/boolean constant (used to make canRequestAds()=true and getConsentStatus()=OBTAINED(3), so the app treats consent as handled and never re-shows the form). These target the concrete (often obfuscated, version-specific) UMP ConsentInformation implementation."
         },
         "note": {
           "type": "string"

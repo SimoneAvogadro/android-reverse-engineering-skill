@@ -1,0 +1,78 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "google-ump-consent",
+  "display_name": "Google UMP / IAB TCF Consent",
+  "description": "Google User Messaging Platform (UMP) consent SDK and its IAB TCF v2.2 consent storage. This entry does NOT merely stub the SDK: it INJECTS code that suppresses the consent dialog and writes a reject-all IAB TCF v2.2 consent state to the default SharedPreferences, so every TCF-honoring ad/tracker SDK self-limits (no personalized ads, no data sharing). See references/consent-neutralization.md. It COMPLEMENTS per-SDK neutralization — non-TCF SDKs (Firebase, Singular, ...) ignore IABTCF and still need their own registry entries.",
+  "vendor": "Google / IAB Europe",
+  "category": "consent",
+  "known_versions": ["user-messaging-platform 4.0.0"],
+  "packages": [
+    "com.google.android.ump",
+    "com.google.android.gms.internal.consent_sdk"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "obfuscated",
+    "internal_prefix": "zz"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "com.google.android.ump.UserMessagingPlatform",
+        "methods": [
+          {
+            "name": "loadAndShowConsentFormIfRequired",
+            "signature": "(Landroid/app/Activity;Lcom/google/android/ump/ConsentForm$OnConsentFormDismissedListener;)V",
+            "inject": "consent-reject-all",
+            "note": "PRIMARY interception (stable public class). Instead of loading/showing the consent form, writes reject-all IABTCF_* (gdprApplies=1 always, all-zero purpose/vendor consent + legitimate-interest keys, reject-all TCString, AddtlConsent='1~') to PreferenceManager.getDefaultSharedPreferences() — the exact store UMP's consent_sdk and every TCF SDK read — then calls the passed OnConsentFormDismissedListener.onConsentFormDismissed(null) so the app proceeds as if the user chose 'reject all'. The dialog is never shown."
+          }
+        ]
+      },
+      {
+        "class": "com.google.android.gms.internal.consent_sdk.zzj",
+        "methods": [
+          {
+            "name": "requestConsentInfoUpdate",
+            "signature": "(Landroid/app/Activity;Lcom/google/android/ump/ConsentRequestParameters;Lcom/google/android/ump/ConsentInformation$OnConsentInfoUpdateSuccessListener;Lcom/google/android/ump/ConsentInformation$OnConsentInfoUpdateFailureListener;)V",
+            "inject": "consent-info-update-success",
+            "note": "Concrete ConsentInformation impl (OBFUSCATED, version-specific — this is the class implementing com.google.android.ump.ConsentInformation in UMP 4.0.0 as shipped in the test app; re-identify for other versions). Fires the success listener immediately (no network) so the app's consent flow continues straight to loadAndShowConsentFormIfRequired. Signature-guarded in neutralize.sh; a wrong/absent class is safely skipped."
+          },
+          {
+            "name": "canRequestAds",
+            "signature": "()Z",
+            "inject": "return-const-1",
+            "note": "Return true so the app proceeds to initialize ads (which then self-limit under the reject-all TCF state, and can be neutralized separately). Coherent with getConsentStatus=OBTAINED."
+          },
+          {
+            "name": "getConsentStatus",
+            "signature": "()I",
+            "inject": "return-const-3",
+            "note": "Return OBTAINED (3): the app treats consent as completed/handled and never re-shows the form. Coherent with gdprApplies=1 + reject-all (a completed reject-all choice), unlike NOT_REQUIRED which would contradict gdprApplies=1."
+          }
+        ]
+      }
+    ]
+  },
+  "protected_patterns": [
+    {
+      "pattern": "*.getConsentInformation()*",
+      "reason": "Returns the ConsentInformation object — must never return null (NPE). Left intact."
+    },
+    {
+      "pattern": "*.getPrivacyOptionsRequirementStatus()*",
+      "reason": "Returns a non-null enum object — null causes NPE. Left intact."
+    },
+    {
+      "pattern": "*.isConsentFormAvailable()*",
+      "reason": "Object/state getter — leave as-is so the app's own logic stays consistent."
+    },
+    {
+      "pattern": "*.reset()*",
+      "reason": "State reset — stubbing could desync the app's consent bookkeeping."
+    },
+    {
+      "pattern": "*.getApplicationContext()*",
+      "reason": "Returns Context — null causes NPE."
+    }
+  ]
+}

@@ -175,6 +175,169 @@ cleanup_patch_log() {
 trap cleanup_patch_log EXIT
 
 # =====================================================================
+# Consent neutralization (code injection) — see
+# references/consent-neutralization.md
+#
+# Reject-all IAB TCF v2.2 TCString: CmpId=300 (Google UMP), TcfPolicyVersion=4,
+# all SpecialFeatureOptIns / PurposeConsents / PurposeLI / vendor bits = 0.
+# Generated and decode-verified (all consent + LI bits zero); see the reference.
+# =====================================================================
+
+CONSENT_TCSTRING="COsdsoAOsdsoAEsABAENAAEgAAAAAAAAAAAAAAAAAAAA"
+
+# emit_consent_pref_writer <ctx_reg> — shared smali that writes the reject-all
+# IABTCF_* key set to the DEFAULT SharedPreferences (the exact store the UMP
+# consent_sdk and every TCF-honoring SDK read — PreferenceManager
+# .getDefaultSharedPreferences => <pkg>_preferences.xml). $1 is the register
+# holding an android.app.Activity to derive the application Context from (p0 in
+# loadAndShowConsentFormIfRequired, p1 in requestConsentInfoUpdate — both are
+# Landroid/app/Activity;). Uses local registers v0 (ctx/prefs/editor), v1 (key),
+# v2 (value). Emits no .registers / return — the caller frames it. Both inject
+# kinds call this so the written key set is byte-for-byte identical.
+emit_consent_pref_writer() {
+  local ctx="$1"
+  cat <<SMALI
+    invoke-virtual {${ctx}}, Landroid/app/Activity;->getApplicationContext()Landroid/content/Context;
+
+    move-result-object v0
+
+    invoke-static {v0}, Landroid/preference/PreferenceManager;->getDefaultSharedPreferences(Landroid/content/Context;)Landroid/content/SharedPreferences;
+
+    move-result-object v0
+
+    invoke-interface {v0}, Landroid/content/SharedPreferences;->edit()Landroid/content/SharedPreferences\$Editor;
+
+    move-result-object v0
+
+    const-string v1, "IABTCF_gdprApplies"
+
+    const/4 v2, 0x1
+
+    invoke-interface {v0, v1, v2}, Landroid/content/SharedPreferences\$Editor;->putInt(Ljava/lang/String;I)Landroid/content/SharedPreferences\$Editor;
+
+    const-string v1, "IABTCF_CmpSdkID"
+
+    const/16 v2, 0x12c
+
+    invoke-interface {v0, v1, v2}, Landroid/content/SharedPreferences\$Editor;->putInt(Ljava/lang/String;I)Landroid/content/SharedPreferences\$Editor;
+
+    const-string v1, "IABTCF_CmpSdkVersion"
+
+    const/4 v2, 0x1
+
+    invoke-interface {v0, v1, v2}, Landroid/content/SharedPreferences\$Editor;->putInt(Ljava/lang/String;I)Landroid/content/SharedPreferences\$Editor;
+
+    const-string v1, "IABTCF_PolicyVersion"
+
+    const/4 v2, 0x4
+
+    invoke-interface {v0, v1, v2}, Landroid/content/SharedPreferences\$Editor;->putInt(Ljava/lang/String;I)Landroid/content/SharedPreferences\$Editor;
+
+    const-string v1, "IABTCF_PurposeOneTreatment"
+
+    const/4 v2, 0x0
+
+    invoke-interface {v0, v1, v2}, Landroid/content/SharedPreferences\$Editor;->putInt(Ljava/lang/String;I)Landroid/content/SharedPreferences\$Editor;
+
+    const-string v1, "IABTCF_TCString"
+
+    const-string v2, "${CONSENT_TCSTRING}"
+
+    invoke-interface {v0, v1, v2}, Landroid/content/SharedPreferences\$Editor;->putString(Ljava/lang/String;Ljava/lang/String;)Landroid/content/SharedPreferences\$Editor;
+
+    const-string v1, "IABTCF_AddtlConsent"
+
+    const-string v2, "1~"
+
+    invoke-interface {v0, v1, v2}, Landroid/content/SharedPreferences\$Editor;->putString(Ljava/lang/String;Ljava/lang/String;)Landroid/content/SharedPreferences\$Editor;
+
+    const-string v1, "IABTCF_PurposeConsents"
+
+    const-string v2, "000000000000000000000000"
+
+    invoke-interface {v0, v1, v2}, Landroid/content/SharedPreferences\$Editor;->putString(Ljava/lang/String;Ljava/lang/String;)Landroid/content/SharedPreferences\$Editor;
+
+    const-string v1, "IABTCF_PurposeLegitimateInterests"
+
+    const-string v2, "000000000000000000000000"
+
+    invoke-interface {v0, v1, v2}, Landroid/content/SharedPreferences\$Editor;->putString(Ljava/lang/String;Ljava/lang/String;)Landroid/content/SharedPreferences\$Editor;
+
+    const-string v1, "IABTCF_VendorConsents"
+
+    const-string v2, "0"
+
+    invoke-interface {v0, v1, v2}, Landroid/content/SharedPreferences\$Editor;->putString(Ljava/lang/String;Ljava/lang/String;)Landroid/content/SharedPreferences\$Editor;
+
+    const-string v1, "IABTCF_VendorLegitimateInterests"
+
+    const-string v2, "0"
+
+    invoke-interface {v0, v1, v2}, Landroid/content/SharedPreferences\$Editor;->putString(Ljava/lang/String;Ljava/lang/String;)Landroid/content/SharedPreferences\$Editor;
+
+    const-string v1, "IABTCF_SpecialFeaturesOptIns"
+
+    const-string v2, "000000000000"
+
+    invoke-interface {v0, v1, v2}, Landroid/content/SharedPreferences\$Editor;->putString(Ljava/lang/String;Ljava/lang/String;)Landroid/content/SharedPreferences\$Editor;
+
+    const-string v1, "IABTCF_PublisherCC"
+
+    const-string v2, "AA"
+
+    invoke-interface {v0, v1, v2}, Landroid/content/SharedPreferences\$Editor;->putString(Ljava/lang/String;Ljava/lang/String;)Landroid/content/SharedPreferences\$Editor;
+
+    invoke-interface {v0}, Landroid/content/SharedPreferences\$Editor;->apply()V
+SMALI
+}
+
+# make_consent_reject_all_body — smali for the static void UMP entry point
+#   loadAndShowConsentFormIfRequired(Activity p0, OnConsentFormDismissedListener p1)
+# Writes reject-all IABTCF_* (via emit_consent_pref_writer p0), then invokes the
+# dismiss listener with null so the app proceeds as if the user rejected all.
+# Registers: v0,v1,v2 locals + p0,p1 params => .registers 5 (p0=v3, p1=v4).
+make_consent_reject_all_body() {
+  printf '    .registers 5\n\n'
+  emit_consent_pref_writer "p0"
+  cat <<SMALI
+
+    if-eqz p1, :cond_ump_done
+
+    const/4 v1, 0x0
+
+    invoke-interface {p1, v1}, Lcom/google/android/ump/ConsentForm\$OnConsentFormDismissedListener;->onConsentFormDismissed(Lcom/google/android/ump/FormError;)V
+
+    :cond_ump_done
+    return-void
+SMALI
+}
+
+# make_consent_info_update_success_body — smali for the instance void
+#   requestConsentInfoUpdate(Activity p1, ConsentRequestParameters p2,
+#     OnConsentInfoUpdateSuccessListener p3, OnConsentInfoUpdateFailureListener p4)
+# requestConsentInfoUpdate is the first, near-universal UMP call, so this inject
+# ALSO writes the reject-all IABTCF_* (identical key set) — otherwise a load/show-
+# separate app that never calls loadAndShowConsentFormIfRequired would get no
+# reject-all state written. The Activity (p1) is @Nullable, so the pref-write is
+# guarded by a null-check; the success listener (p3) is fired either way so the
+# app's consent flow continues (no network). Registers: v0,v1,v2 locals + this +
+# 4 params => .registers 8 (p1=v4 context source, p3=v6 listener).
+make_consent_info_update_success_body() {
+  printf '    .registers 8\n\n    if-eqz p1, :cond_ump_nowrite\n\n'
+  emit_consent_pref_writer "p1"
+  cat <<SMALI
+
+    :cond_ump_nowrite
+    if-eqz p3, :cond_ump_ok
+
+    invoke-interface {p3}, Lcom/google/android/ump/ConsentInformation\$OnConsentInfoUpdateSuccessListener;->onConsentInfoUpdateSuccess()V
+
+    :cond_ump_ok
+    return-void
+SMALI
+}
+
+# =====================================================================
 # patch_method() — Replace a smali method body with a stub
 #
 # Arguments:
@@ -192,10 +355,25 @@ patch_method() {
   local method_name="$2"
   local sdk_name="$3"
   local class_desc="$4"
+  local inject_kind="${5:-}"
 
   if [[ ! -f "$file" ]]; then
     return
   fi
+
+  # Resolve the injected body (for code-injection kinds) or the const value
+  # (for return-const-N). Trivial stubs leave both empty and let awk derive the
+  # stub from the return type as before.
+  local inject_body=""
+  local inject_const=""
+  case "$inject_kind" in
+    consent-reject-all)          inject_body="$(make_consent_reject_all_body)" ;;
+    consent-info-update-success) inject_body="$(make_consent_info_update_success_body)" ;;
+    return-const-*)              inject_const="${inject_kind##*-}" ;;
+    "")                          : ;;
+    *) echo "Warning: unknown inject kind '$inject_kind' for $method_name — using default stub" >&2
+       inject_kind="" ;;
+  esac
 
   # Use awk to find and patch method bodies
   local tmp_file
@@ -203,7 +381,9 @@ patch_method() {
   local patched=false
 
   awk -v method="$method_name" -v sdk="$sdk_name" -v cls="$class_desc" \
-      -v dry_run="$DRY_RUN" -v src_file="$file" '
+      -v dry_run="$DRY_RUN" -v src_file="$file" \
+      -v inject_kind="$inject_kind" -v inject_body="$inject_body" \
+      -v inject_const="$inject_const" '
   BEGIN {
     in_target = 0
     found = 0
@@ -271,6 +451,44 @@ patch_method() {
     # Count registers needed for parameters (including "this" for instance methods)
     param_regs = count_param_registers(params, is_static)
 
+    # ----- CODE INJECTION path (inject_kind set) -----
+    # The replacement body actively executes logic (writes SharedPreferences,
+    # fires a listener, or returns a fixed constant) rather than a trivial stub.
+    if (inject_kind != "") {
+      stub_type = inject_kind
+      if (inject_kind == "consent-reject-all") {
+        # Expect: static void f(Activity, OnConsentFormDismissedListener) => 2 param regs
+        if (is_static != 1 || param_regs != 2) {
+          printf "SKIP_INJECT:%s:%s:signature-mismatch:%s\n", inject_kind, method, src_file > "/dev/stderr"
+          in_target = 0
+          print $0
+          next
+        }
+        stub_body = inject_body
+      } else if (inject_kind == "consent-info-update-success") {
+        # Expect: instance void f(Activity, Params, SuccessListener, FailureListener) => this+4 = 5
+        if (is_static != 0 || param_regs != 5) {
+          printf "SKIP_INJECT:%s:%s:signature-mismatch:%s\n", inject_kind, method, src_file > "/dev/stderr"
+          in_target = 0
+          print $0
+          next
+        }
+        stub_body = inject_body
+      } else {
+        # return-const-N : return a fixed int/boolean constant (e.g. canRequestAds=1,
+        # getConsentStatus=3/OBTAINED). Only valid for int-family/boolean returns.
+        if (ret_type != "Z" && ret_type != "I" && ret_type != "S" && \
+            ret_type != "B" && ret_type != "C") {
+          printf "SKIP_INJECT:%s:%s:non-int-return:%s\n", inject_kind, method, src_file > "/dev/stderr"
+          in_target = 0
+          print $0
+          next
+        }
+        total_regs = param_regs + 1
+        if (total_regs < 1) total_regs = 1
+        stub_body = "    .registers " total_regs "\n\n    const/16 v0, 0x" inject_const "\n\n    return v0"
+      }
+    } else {
     # Determine stub type and registers needed for the stub itself
     if (ret_type == "V") {
       stub_type = "return-void"
@@ -304,6 +522,7 @@ patch_method() {
       stub_body = "    .registers " total_regs "\n\n    const/4 v0, 0x0\n\n    return v0"
     } else {
       stub_body = "    .registers " total_regs "\n\n    const/4 v0, 0x0\n\n    return-object v0"
+    }
     }
 
     if (dry_run == "true") {
@@ -374,6 +593,7 @@ find_and_patch() {
   local methods_csv="$2"
   local sdk_name="$3"
   local class_desc="$4"
+  local inject_kind="${5:-}"
 
   IFS=',' read -ra methods <<< "$methods_csv"
 
@@ -381,7 +601,7 @@ find_and_patch() {
     local smali_file="$smali_dir/$class_path.smali"
     if [[ -f "$smali_file" ]]; then
       for method in "${methods[@]}"; do
-        patch_method "$smali_file" "$method" "$sdk_name" "$class_desc"
+        patch_method "$smali_file" "$method" "$sdk_name" "$class_desc" "$inject_kind"
       done
     fi
   done
@@ -810,8 +1030,19 @@ patch_custom_targets() {
     # Format: Lcom/example/Class;:methodName or com/example/Class:methodName
     # Wildcards: com/example/pkg/**:* (all methods in package)
     #            com/example/Class:* (all methods in class)
-    local class_part="${line%%:*}"
-    local method_part="${line##*:}"
+    # Optional third ':'-delimited field = code-injection kind, e.g.
+    #   com/google/android/ump/UserMessagingPlatform:loadAndShowConsentFormIfRequired:consent-reject-all
+    # Class paths never contain ':' and method names are identifiers, so a
+    # simple split on ':' yields class / method / (optional) inject-kind.
+    local class_part method_part inject_kind
+    IFS=':' read -r class_part method_part inject_kind <<< "$line"
+
+    # Strip a trailing CR so a CRLF (Windows-edited) targets file does not turn
+    # e.g. "consent-reject-all" into "consent-reject-all\r" (an unknown inject
+    # kind that would silently fall back to return-void). bash 3.2-safe.
+    class_part="${class_part%$'\r'}"
+    method_part="${method_part%$'\r'}"
+    inject_kind="${inject_kind%$'\r'}"
 
     if [[ -z "$class_part" ]] || [[ -z "$method_part" ]]; then
       echo "Warning: Skipping malformed target line: $line" >&2
@@ -856,9 +1087,9 @@ patch_custom_targets() {
       continue
     fi
 
-    # Standard target: specific class + method
+    # Standard target: specific class + method (+ optional inject kind)
     local class_desc="L${class_part};"
-    find_and_patch "$class_part" "$method_part" "Custom" "$class_desc"
+    find_and_patch "$class_part" "$method_part" "Custom" "$class_desc" "$inject_kind"
   done < "$TARGETS_FILE"
 }
 

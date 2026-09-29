@@ -107,7 +107,7 @@ Known third-party SDKs and common libraries are excluded, so a genuine third-par
 
 ### Step 5: Identify targets — Registry Scan
 
-The decoded directory contains smali bytecode. Use `registry-scan.py` to match against the SDK registry (47 SDKs, 369 entry points, 355 ad operations).
+The decoded directory contains smali bytecode. Use `registry-scan.py` to match against the SDK registry (48 SDKs, 373 entry points, 355 ad operations).
 
 **5a. Run registry scan:**
 
@@ -129,6 +129,17 @@ Parse stdout:
 - **Depth 3**: + bulk-stub internal packages (aggressive, version-dependent)
 
 If the user requests depth 2 or 3, re-run with `--depth 2` or `--depth 3`.
+
+**Consent neutralization (distinct capability — code injection):** if the scan reports
+`MATCHED:google-ump-consent:…` the app uses Google UMP / IAB TCF consent. This entry does not
+just stub — it **injects code** so the app behaves as if the user pressed **"Reject all"**
+without showing the dialog: it writes a reject-all IAB TCF v2.2 state (gdprApplies=1, all-zero
+consent + legitimate-interest keys, a reject-all `IABTCF_TCString`) to the default
+SharedPreferences and drives the UMP callbacks. It rides the normal registry-driven pipeline
+(no extra flags); target lines carry the injection kind as a third `:`-field, and Phase 7
+emits `PATCHED:…:consent-reject-all:…` (or `SKIP_INJECT:…` on a signature mismatch). Present it
+to the user as a separate item, and note it **complements** SDK neutralization (non-TCF SDKs
+still need stubbing). Full detail: `skills/sdk-neutralizer/references/consent-neutralization.md`.
 
 **Fallback** (if Python 3 not available): use builtin hardcoded detection:
 ```bash

@@ -160,7 +160,7 @@ Ask the user which depth level to use. Default to depth 1 unless they request mo
 
 #### Phase 3a — Registry Scan (Known SDKs)
 
-Run `registry-scan.py` to match the decoded APK against the SDK registry (47 SDKs, 369 entry points, 355 ad operations, 31 deep patterns).
+Run `registry-scan.py` to match the decoded APK against the SDK registry (48 SDKs, 373 entry points, 355 ad operations, 31 deep patterns).
 
 **Action**: Run registry scan.
 
@@ -475,7 +475,37 @@ If the input was a split bundle, include this section (from `.merged-from-splits
 - Use `--targets-file` to add custom neutralization targets for obfuscated code
 - Review the legal implications with your organization's legal/compliance team before distributing
 
+## Consent Neutralization (distinct capability — code injection)
+
+This is a **separate capability** from ordinary stubbing, and much more than a no-op stub.
+Ordinary neutralization replaces a method body with a trivial return; **consent neutralization
+INJECTS working code** that makes the app behave as if the user opened the Google UMP / IAB TCF
+consent dialog and pressed **"Reject all"** — without ever showing it.
+
+**When it applies**: apps using **Google UMP** with **IAB TCF v2.2** (the *"…asks for your
+consent… / Manage options"* dialog). UMP and every TCF-honoring ad/tracker SDK read the
+`IABTCF_*` keys from the app's default SharedPreferences; writing a single authoritative
+reject-all state makes them all self-limit.
+
+**How it works** (full detail in `references/consent-neutralization.md`):
+- **Reject-all write** (`gdprApplies=1` always, all-zero purpose/vendor consent **and legitimate-interest** keys, a decode-verified reject-all `IABTCF_TCString`, `AddtlConsent="1~"`) to `PreferenceManager.getDefaultSharedPreferences()`, injected into **two** hooks (identical key set) so it happens on any UMP call pattern: `requestConsentInfoUpdate(...)` on the concrete `ConsentInformation` impl — the **first, near-universal UMP call** (writes prefs from the Activity, null-guarded, then fires its success listener, no network); and the combined helper `UserMessagingPlatform.loadAndShowConsentFormIfRequired(...)` (writes prefs then invokes `onConsentFormDismissed(null)`).
+- **Callback-aware** handling on the concrete (obfuscated, version-specific) `ConsentInformation` impl so the app never loops/stalls: `canRequestAds()` returns true; `getConsentStatus()` returns OBTAINED(3).
+- If **neither** hook is present (e.g. the obfuscated impl is renamed and no combined helper), the entry is a **safe no-op** — nothing is written; re-identify the impl for that UMP version.
+
+**How to invoke it**: it is a registry entry (`registry/consent-umptcf.json`, `sdk_id:
+google-ump-consent`, `category: consent`). Phase 3a `registry-scan.py` matches it and emits
+target lines carrying the injection kind as an optional third `:`-field
+(`<class>:<method>:<inject-kind>`, e.g. `…UserMessagingPlatform:loadAndShowConsentFormIfRequired:consent-reject-all`);
+Phase 4 `neutralize.sh` performs the injection (emitting
+`PATCHED:…:consent-reject-all:…`, or `SKIP_INJECT:…` if a target's signature doesn't match).
+No extra flags are needed — the normal registry-driven pipeline handles it.
+
+**Caveat**: it **complements** SDK neutralization, it does not replace it. Non-TCF SDKs
+(Firebase Analytics, Crashlytics, Singular, …) ignore `IABTCF_*` and still need their own
+entries; reject-all **reduces** but does not **guarantee** zero tracking.
+
 ## References
 
 - `${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/references/neutralization-guide.md` — Approach overview, stub types, pitfalls, legal disclaimer
 - `${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/references/smali-patterns.md` — Complete smali stub catalog per SDK
+- `${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/references/consent-neutralization.md` — Consent neutralization (IAB TCF / UMP) via code injection: mechanism, keys, reject-all TCString, interception points, caveats

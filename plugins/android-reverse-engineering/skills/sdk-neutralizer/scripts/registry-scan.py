@@ -210,8 +210,12 @@ def generate_targets(sdk, depth):
             method_name = method["name"]
             if method_name in protected_methods:
                 continue
-            lines.append(f"# [{sdk_name}] entry_point")
-            lines.append(f"{cls}:{method_name}")
+            inject = method.get("inject")
+            lines.append(f"# [{sdk_name}] entry_point" + (f" (inject: {inject})" if inject else ""))
+            # A target line carries an optional third ':'-delimited field: the
+            # inject kind. neutralize.sh replaces the method body with a
+            # purpose-built code sequence instead of a trivial stub.
+            lines.append(f"{cls}:{method_name}:{inject}" if inject else f"{cls}:{method_name}")
 
     # Level 2: ad_operations
     if depth >= 2:
@@ -221,8 +225,9 @@ def generate_targets(sdk, depth):
                 method_name = method["name"]
                 if method_name in protected_methods:
                     continue
-                lines.append(f"# [{sdk_name}] ad_operation")
-                lines.append(f"{cls}:{method_name}")
+                inject = method.get("inject")
+                lines.append(f"# [{sdk_name}] ad_operation" + (f" (inject: {inject})" if inject else ""))
+                lines.append(f"{cls}:{method_name}:{inject}" if inject else f"{cls}:{method_name}")
 
     # Level 3: deep_patterns (package wildcards)
     if depth >= 3:
