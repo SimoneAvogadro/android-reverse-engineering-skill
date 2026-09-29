@@ -1,0 +1,67 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "backtrace",
+  "display_name": "Backtrace",
+  "description": "Backtrace (backtraceio) Android crash/error & ANR reporting SDK. Has no auto-init ContentProvider — the app constructs BacktraceClient manually and opts in via BacktraceExceptionHandler.enable(client) (global uncaught handler), enableAnr / native integration, and metrics. Exodus classifies it as a tracker. Seen in ~4 kids apps (Budge/Barbie).",
+  "vendor": "Backtrace I/O (Sauce Labs)",
+  "category": "crash_reporting",
+  "known_versions": ["3.8.4", "3.14.0"],
+  "packages": [
+    "backtraceio"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "readable"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "backtraceio.library.models.BacktraceExceptionHandler",
+        "methods": [
+          { "name": "enable", "signature": "*", "stub": "return-void", "note": "static void enable(BacktraceClient) — installs the global Thread.setDefaultUncaughtExceptionHandler. Stubbing prevents automatic capture/exfiltration of uncaught crashes. KEY entry point (there is no auto-init provider)." },
+          { "name": "setCustomAttributes", "signature": "*", "stub": "return-void", "note": "static void — attaches attributes to auto-reported crashes." }
+        ]
+      },
+      {
+        "class": "backtraceio.library.BacktraceClient",
+        "methods": [
+          { "name": "send", "signature": "*", "stub": "return-void", "note": "void — manual report submission (Throwable/Exception/String/BacktraceReport overloads). Core exfiltration path." },
+          { "name": "enableAnr", "signature": "*", "stub": "return-void", "note": "void — installs the ANR watchdog that reports application-not-responding events." }
+        ]
+      },
+      {
+        "class": "backtraceio.library.base.BacktraceBase",
+        "methods": [
+          { "name": "enableNativeIntegration", "signature": "*", "stub": "return-void", "note": "void overloads — installs the native (NDK) crash handler." },
+          { "name": "tryEnableNativeIntegration", "signature": "*", "stub": "return-false/0", "note": "Returns boolean; stub false (native handler not installed)." },
+          { "name": "enableProguard", "signature": "*", "stub": "return-void", "note": "void" },
+          { "name": "enableBreadcrumbs", "signature": "*", "stub": "return-false/0", "note": "Returns boolean; stub false (breadcrumb collection not enabled)." },
+          { "name": "setOnRequestHandler", "signature": "*", "stub": "return-void", "note": "void — sets the HTTP request handler used for delivery." },
+          { "name": "setOnBeforeSendEventListener", "signature": "*", "stub": "return-void", "note": "void" },
+          { "name": "setOnServerErrorEventListener", "signature": "*", "stub": "return-void", "note": "void" }
+        ]
+      },
+      {
+        "class": "backtraceio.library.services.BacktraceMetrics",
+        "methods": [
+          { "name": "enable", "signature": "*", "stub": "return-void", "note": "void — starts usage metrics collection/delivery." },
+          { "name": "send", "signature": "*", "stub": "return-void", "note": "void — flushes queued metric events to Backtrace." },
+          { "name": "sendStartupEvent", "signature": "*", "stub": "return-void", "note": "void — startup/unique event." },
+          { "name": "addUniqueEvent", "signature": "*", "stub": "return-false/0", "note": "Returns boolean; stub false." },
+          { "name": "addSummedEvent", "signature": "*", "stub": "return-false/0", "note": "Returns boolean; stub false." }
+        ]
+      }
+    ],
+    "ad_operations": [],
+    "deep_patterns": []
+  },
+  "manifest_components": [],
+  "protected_patterns": [
+    { "pattern": "*.getAttributes()*", "reason": "Returns the client's attributes Map the app may read/iterate; null would NPE." },
+    { "pattern": "*.getAttachments()*", "reason": "Returns the client's attachments List the app may read/iterate; null would NPE." },
+    { "pattern": "*.getUniqueEvents()*", "reason": "Returns a ConcurrentLinkedDeque the app may read; null would NPE." },
+    { "pattern": "*.getSummedEvents()*", "reason": "Returns a ConcurrentLinkedDeque the app may read; null would NPE." },
+    { "pattern": "*.initAnrHandler()*", "reason": "Returns backtraceio.library.anr.BacktraceANRHandler the app may chain on; null would NPE. (The common opt-in path enableAnr is stubbed instead.)" },
+    { "pattern": "*.createBacktraceAnrHandler()*", "reason": "Returns backtraceio.library.anr.BacktraceANRHandler the app may chain on; null would NPE." }
+  ]
+}

@@ -1,0 +1,92 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "amplitude",
+  "display_name": "Amplitude",
+  "description": "Amplitude product-analytics SDK. Two generations: legacy v1 (artifact com.amplitude:android-sdk, package com.amplitude.api, static facade Amplitude + instance AmplitudeClient) and current v2 (artifact com.amplitude:analytics-android, packages com.amplitude.android + com.amplitude.core, class Amplitude). CRITICAL: both the AmplitudeClient (v1) and the Amplitude (v2) instances are FLUENT builders — nearly every method (initialize, setUserId, setDeviceId, track, identify, logRevenue, setGroup, groupIdentify, enableForegroundTracking, useAdvertisingIdForDeviceId, ...) returns the client itself for chaining. Null-returning any of them would break the app's call chain and NPE, so they are NOT stubbed here. Only genuinely void, fire-and-forget calls are stubbed: the v1 static facade (com.amplitude.api.Amplitude.*, all static void), the v1 AmplitudeClient void reporting calls (logEvent/logEventSync/logRevenue/logRevenueV2/setUserProperties/identify/setGroup/groupIdentify/uploadEvents), and the v2 flush() (the only void method on the v2 client). getUserId/getDeviceId (String) are protected. Amplitude uploads over OkHttp on worker threads with no manifest service/receiver, so there are no manifest components to disable. Verified against analytics-core 1.33.0 (v2) and android-sdk 3.35.1 (v1); no local decode available.",
+  "vendor": "Amplitude",
+  "category": "analytics",
+  "known_versions": ["1.33.0", "3.35.1"],
+  "packages": [
+    "com.amplitude.api",
+    "com.amplitude.android",
+    "com.amplitude.core"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "readable"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "com.amplitude.api.Amplitude",
+        "methods": [
+          { "name": "initialize", "signature": "*", "stub": "return-void", "note": "v1 static facade init; (Context,String) and (Context,String,String), both static void — safe to stub (unlike the AmplitudeClient.initialize instance method, which is fluent)" },
+          { "name": "logEvent", "signature": "*", "stub": "return-void", "note": "v1 static facade; void" },
+          { "name": "logRevenue", "signature": "*", "stub": "return-void", "note": "v1 static facade; 3 overloads, void" },
+          { "name": "setUserProperties", "signature": "*", "stub": "return-void", "note": "v1 static facade; void" },
+          { "name": "setUserId", "signature": "(Ljava/lang/String;)V", "stub": "return-void", "note": "v1 static facade setUserId is void (the AmplitudeClient.setUserId instance method is fluent and is protected)" },
+          { "name": "uploadEvents", "signature": "()V", "stub": "return-void", "note": "v1 static facade flush; void" },
+          { "name": "startSession", "signature": "()V", "stub": "return-void", "note": "v1 static facade; void" },
+          { "name": "endSession", "signature": "()V", "stub": "return-void", "note": "v1 static facade; void" },
+          { "name": "enableNewDeviceIdPerInstall", "signature": "(Z)V", "stub": "return-void", "note": "v1 static facade; void" },
+          { "name": "useAdvertisingIdForDeviceId", "signature": "()V", "stub": "return-void", "note": "v1 static facade; void (the AmplitudeClient instance method is fluent and is protected)" },
+          { "name": "enableLocationListening", "signature": "()V", "stub": "return-void", "note": "v1 static facade; void" },
+          { "name": "disableLocationListening", "signature": "()V", "stub": "return-void", "note": "v1 static facade; void" }
+        ]
+      },
+      {
+        "class": "com.amplitude.api.AmplitudeClient",
+        "methods": [
+          { "name": "logEvent", "signature": "*", "stub": "return-void", "note": "v1 instance event logging; 8 overloads, all void" },
+          { "name": "logEventSync", "signature": "*", "stub": "return-void", "note": "v1 synchronous event logging; 6 overloads, all void" },
+          { "name": "logRevenue", "signature": "*", "stub": "return-void", "note": "v1 revenue; 4 overloads, all void" },
+          { "name": "logRevenueV2", "signature": "*", "stub": "return-void", "note": "v1 revenue v2; 2 overloads, all void" },
+          { "name": "setUserProperties", "signature": "*", "stub": "return-void", "note": "v1; 3 overloads, all void" },
+          { "name": "clearUserProperties", "signature": "()V", "stub": "return-void" },
+          { "name": "identify", "signature": "*", "stub": "return-void", "note": "v1 identify; 3 overloads, all void" },
+          { "name": "setGroup", "signature": "*", "stub": "return-void", "note": "v1; overloads all void" },
+          { "name": "groupIdentify", "signature": "*", "stub": "return-void", "note": "v1; 3 overloads, all void" },
+          { "name": "uploadEvents", "signature": "()V", "stub": "return-void", "note": "v1 flush; void" },
+          { "name": "showEventExplorer", "signature": "(Landroid/app/Activity;)V", "stub": "return-void", "note": "v1 debug overlay; void" }
+        ]
+      },
+      {
+        "class": "com.amplitude.core.Amplitude",
+        "methods": [
+          { "name": "flush", "signature": "()V", "stub": "return-void", "note": "v2 flush — the ONLY void method on the v2 client. All v2 track/identify/setUserId/setDeviceId/setGroup/groupIdentify/revenue/logRevenue calls return com.amplitude.core.Amplitude (fluent) and are protected, not stubbed" }
+        ]
+      },
+      {
+        "class": "com.amplitude.android.Amplitude",
+        "methods": [
+          { "name": "flush", "signature": "()V", "stub": "return-void", "note": "v2 Android subclass flush (inherited void); harmless duplicate of core flush for apps typed against the concrete class" }
+        ]
+      }
+    ],
+    "ad_operations": [],
+    "deep_patterns": []
+  },
+  "manifest_components": [],
+  "protected_patterns": [
+    {
+      "pattern": "*.getInstance()*",
+      "reason": "v1 com.amplitude.api.Amplitude.getInstance() returns the shared AmplitudeClient the app then chains on; null would NPE the whole init chain"
+    },
+    {
+      "pattern": "*.getUserId()*",
+      "reason": "String getter (v1 AmplitudeClient / v2 Amplitude); the app may read and dereference it, so it is left working"
+    },
+    {
+      "pattern": "*.getDeviceId()*",
+      "reason": "String getter (v1 facade + instance, v2 Amplitude); returns the resolved device id the app may read; null could NPE callers. Left working"
+    },
+    {
+      "pattern": "*.track()*",
+      "reason": "v2 track(...) is FLUENT: returns com.amplitude.core.Amplitude (this) for chaining. Null-returning it would break call chains and NPE, so it is deliberately NOT in entry_points. (v1 AmplitudeClient.setUserId / .setDeviceId / .initialize are fluent for the same reason and are simply left out of entry_points; only the v1 static facade's void setUserId/initialize are stubbed. These names are not protected here because that would also un-stub the safe void facade versions — registry-scan.py excludes protected method names globally.)"
+    },
+    {
+      "pattern": "*.setDeviceId()*",
+      "reason": "v1 AmplitudeClient.setDeviceId and v2 Amplitude.setDeviceId are FLUENT (return the client). setDeviceId is never a stub target, so protecting the name is safe and documents the fluent risk"
+    }
+  ]
+}

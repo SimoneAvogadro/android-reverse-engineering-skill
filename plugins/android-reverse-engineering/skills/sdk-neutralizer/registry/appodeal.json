@@ -1,0 +1,114 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "appodeal",
+  "display_name": "Appodeal",
+  "description": "Appodeal ad mediation SDK. The public facade lives in com.appodeal.ads; the ad-rendering runtime (IAB MRAID/VAST, Open Measurement) and a shaded protobuf are shipped under com.explorestack (Exodus signature: com.explorestack).",
+  "vendor": "Appodeal (Stack.com / BidMachine)",
+  "category": "ads_mediation",
+  "known_versions": ["3.0.1"],
+  "packages": [
+    "com.appodeal.ads",
+    "com.explorestack"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "obfuscated",
+    "internal_prefix": "single-letter"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "com.appodeal.ads.Appodeal",
+        "methods": [
+          { "name": "initialize", "signature": "*", "stub": "return-void", "note": "Main SDK init (all 4 overloads return void). HANG RISK: the overload initialize(Activity,String,int,ApdInitializationCallback) never invokes onInitializationFinished when stubbed — apps that gate startup on init completion may hang. Prefer relying on the ad_operations stubs (show=false / isLoaded=false) and testing before shipping." },
+          { "name": "setAutoCache", "signature": "*", "stub": "return-void", "note": "void setAutoCache(int,boolean) — disables auto-cache config" }
+        ]
+      }
+    ],
+    "ad_operations": [
+      {
+        "class": "com.appodeal.ads.Appodeal",
+        "methods": [
+          { "name": "show", "signature": "*", "stub": "return-false/0", "note": "boolean show(Activity,int[,String]) — report that no ad was shown" },
+          { "name": "cache", "signature": "*", "stub": "return-void", "note": "void cache(Activity,int[,int]) — do not fetch ads. HANG RISK: per-ad load callbacks (onXxxLoaded / onXxxFailedToLoad) never fire; apps that wait for a load result before proceeding may stall." },
+          { "name": "hide", "signature": "*", "stub": "return-void", "note": "void hide(Activity,int)" },
+          { "name": "isLoaded", "signature": "*", "stub": "return-false/0", "note": "boolean isLoaded(int) — always report no ad available" },
+          { "name": "canShow", "signature": "*", "stub": "return-false/0", "note": "boolean canShow(int[,String]) — always report cannot show" },
+          { "name": "isInitialized", "signature": "*", "stub": "return-false/0", "note": "boolean isInitialized(int)" },
+          { "name": "isPrecache", "signature": "*", "stub": "return-false/0", "note": "boolean isPrecache(int)" },
+          { "name": "isAutoCacheEnabled", "signature": "*", "stub": "return-false/0", "note": "boolean isAutoCacheEnabled(int)" }
+        ]
+      }
+    ]
+  },
+  "manifest_components": [
+    {
+      "type": "provider",
+      "class": "com.appodeal.ads.ApdContentProvider",
+      "action": "disable",
+      "note": "Auto-init ContentProvider (from core AAR manifest)"
+    },
+    {
+      "type": "activity",
+      "class": "com.appodeal.ads.VideoPlayerActivity",
+      "action": "disable",
+      "note": "Fullscreen video ad player (core AAR manifest)"
+    },
+    {
+      "type": "activity",
+      "class": "com.appodeal.ads.TestActivity",
+      "action": "disable",
+      "note": "SDK test/debug activity (core AAR manifest)"
+    },
+    {
+      "type": "receiver",
+      "class": "com.appodeal.ads.AppodealPackageAddedReceiver",
+      "action": "disable",
+      "note": "PACKAGE_ADDED install-referrer receiver (core AAR manifest)"
+    },
+    {
+      "type": "activity",
+      "class": "com.explorestack.iab.mraid.MraidActivity",
+      "action": "disable",
+      "note": "explorestack IAB MRAID ad activity (class name observed referenced in real smali)"
+    },
+    {
+      "type": "activity",
+      "class": "com.explorestack.iab.mraid.MraidDialogActivity",
+      "action": "disable",
+      "note": "explorestack IAB MRAID dialog ad activity (referenced in real smali)"
+    },
+    {
+      "type": "activity",
+      "class": "com.explorestack.iab.vast.activity.VastActivity",
+      "action": "disable",
+      "note": "explorestack IAB VAST video ad activity (referenced in real smali)"
+    }
+  ],
+  "protected_patterns": [
+    {
+      "pattern": "*.getReward()*",
+      "reason": "Returns a com.appodeal.ads.rewarded.Reward object — stubbing to null would NPE the app's reward-handling code."
+    },
+    {
+      "pattern": "*.getRewardParameters()*",
+      "reason": "Returns an android.util.Pair — stubbing to null would NPE callers that read the reward amount/currency."
+    },
+    {
+      "pattern": "*.getActivity()*",
+      "reason": "Returns an Activity reference — null causes NPE."
+    },
+    {
+      "pattern": "com.appodeal.ads.*Callbacks",
+      "reason": "Ad callback interfaces (Interstitial/RewardedVideo/Banner/Mrec/Native/Request/AdRevenue). These are the SDK->app bridge; never stub their delivery methods or the app's own listeners break."
+    },
+    {
+      "pattern": "com.appodeal.ads.Appodeal.set*Callbacks",
+      "reason": "Callback registration setters — leave intact so the app's listeners stay wired to the (already-neutralized) SDK; stubbing them adds no safety and only risks NPEs on the returned/registered objects."
+    },
+    {
+      "pattern": "com.appodeal.ads.initializing.ApdInitializationCallback",
+      "reason": "Initialization callback interface — onInitializationFinished must remain callable; do not stub it. See HANG RISK note on Appodeal.initialize."
+    }
+  ]
+}

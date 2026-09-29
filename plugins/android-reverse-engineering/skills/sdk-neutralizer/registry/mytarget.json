@@ -1,0 +1,78 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "mytarget",
+  "display_name": "myTarget",
+  "description": "myTarget (VK / Mail.ru) advertising SDK — interstitial, rewarded and banner (MyTargetView) ads",
+  "vendor": "VK (Mail.ru Group)",
+  "category": "ads",
+  "known_versions": ["5.27.1", "5.12.0"],
+  "packages": [
+    "com.my.target"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "obfuscated",
+    "internal_prefix": "single letters (com.my.target.j, s4, ta, qa, ...)"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "com.my.target.common.MyTargetManager",
+        "methods": [
+          { "name": "initSdk", "signature": "(Landroid/content/Context;)V", "stub": "return-void", "note": "Global SDK init. Sets the internal AtomicBoolean; once stubbed isSdkInitialized() naturally stays false. No init callback here, so no init-callback hang." }
+        ]
+      }
+    ],
+    "ad_operations": [
+      {
+        "class": "com.my.target.ads.BaseInterstitialAd",
+        "methods": [
+          { "name": "load", "signature": "()V", "stub": "return-void", "note": "Parent of InterstitialAd and RewardedAd — stubbing here neutralizes both. Load is listener-driven (InterstitialAdListener/RewardedAdListener onLoad/onNoAd); stubbing load to void means neither callback fires. HANG RISK if the app blocks UI on onNoAd/onLoad; typical games proceed regardless." },
+          { "name": "loadFromBid", "signature": "(Ljava/lang/String;)V", "stub": "return-void", "note": "Header-bidding load variant." },
+          { "name": "show", "signature": "*", "stub": "return-void", "note": "show() and show(Context) — display interstitial/rewarded." },
+          { "name": "dismiss", "signature": "()V", "stub": "return-void" }
+        ]
+      },
+      {
+        "class": "com.my.target.ads.MyTargetView",
+        "methods": [
+          { "name": "load", "signature": "()V", "stub": "return-void", "note": "Banner load. Listener-driven (MyTargetViewListener onLoad/onNoAd) — same no-callback hang caveat as interstitial." },
+          { "name": "loadFromBid", "signature": "(Ljava/lang/String;)V", "stub": "return-void" }
+        ]
+      }
+    ],
+    "deep_patterns": []
+  },
+  "manifest_components": [
+    {
+      "type": "activity",
+      "class": "com.my.target.common.MyTargetActivity",
+      "action": "disable",
+      "note": "Full-screen ad display activity (interstitial/rewarded)."
+    },
+    {
+      "type": "provider",
+      "class": "com.my.target.common.MyTargetContentProvider",
+      "action": "disable",
+      "note": "Auto-init ContentProvider (5.13+). Disabling prevents zero-touch SDK startup. Authority is ${applicationId}.mytargetcontentprovider, so no collision with app providers."
+    }
+  ],
+  "protected_patterns": [
+    {
+      "pattern": "com.my.target.common.MyTargetManager.isSdkInitialized*",
+      "reason": "Returns a boolean that is naturally false once initSdk is stubbed; leave it so callers correctly see the SDK as not initialised rather than being forced true."
+    },
+    {
+      "pattern": "com.my.target.common.MyTargetManager.getSdkConfig*",
+      "reason": "Returns the MyTargetConfig object the app reads/configures; null would NPE."
+    },
+    {
+      "pattern": "*.getCustomParams*",
+      "reason": "BaseAd/MyTargetView getCustomParams() returns the @NonNull CustomParams the app configures before load; null would NPE."
+    },
+    {
+      "pattern": "*.getListener*",
+      "reason": "Ad object getListener() returns the listener the app registered; leave the getter intact (it is a callback bridge, not an ad-serving call)."
+    }
+  ]
+}

@@ -1,0 +1,80 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "singular",
+  "display_name": "Singular",
+  "description": "Singular mobile attribution and marketing analytics SDK (artifact com.singular.sdk:singular_sdk on maven.singular.net). The whole public API is the static com.singular.sdk.Singular facade: the fire-and-forget reporting calls (event/revenue/customRevenue/adRevenue/setCustomUserId/...) are stubbed, while the ID/session getters and the callback-based short-link/deep-link entry points are protected. Verified against the real smali in blockcraft5 (com.singular.sdk 12.10.0) and the AAR public API (12.16.1). Note: init/event/revenue/customRevenue/setGlobalProperty return boolean, so the patcher stubs them to return 0/false (their real type); the app treats them as fire-and-forget.",
+  "vendor": "Singular",
+  "category": "attribution",
+  "known_versions": ["12.10.0", "12.16.1"],
+  "packages": [
+    "com.singular.sdk"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "readable"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "com.singular.sdk.Singular",
+        "methods": [
+          { "name": "init", "signature": "*", "stub": "return-false/0", "note": "Main SDK init; (Context,SingularConfig) and (Context,String,String), both return boolean" },
+          { "name": "event", "signature": "*", "stub": "return-false/0", "note": "Track event; 3 overloads (String / String,String / String,Object[]), all return boolean" },
+          { "name": "eventJSON", "signature": "*", "stub": "return-false/0", "note": "Track event with JSON payload; returns boolean" },
+          { "name": "revenue", "signature": "*", "stub": "return-false/0", "note": "Revenue tracking; 7 overloads, all return boolean" },
+          { "name": "customRevenue", "signature": "*", "stub": "return-false/0", "note": "Named revenue tracking; 7 overloads, all return boolean" },
+          { "name": "adRevenue", "signature": "(Lcom/singular/sdk/SingularAdData;)V", "stub": "return-void", "note": "Ad revenue tracking (void)" },
+          { "name": "setCustomUserId", "signature": "(Ljava/lang/String;)V", "stub": "return-void" },
+          { "name": "unsetCustomUserId", "signature": "()V", "stub": "return-void" },
+          { "name": "setDeviceCustomUserId", "signature": "(Ljava/lang/String;)V", "stub": "return-void" },
+          { "name": "setGlobalProperty", "signature": "(Ljava/lang/String;Ljava/lang/String;Z)Z", "stub": "return-false/0", "note": "Registers a global tracking property; returns boolean" },
+          { "name": "unsetGlobalProperty", "signature": "(Ljava/lang/String;)V", "stub": "return-void" },
+          { "name": "clearGlobalProperties", "signature": "()V", "stub": "return-void" },
+          { "name": "setFCMDeviceToken", "signature": "(Ljava/lang/String;)V", "stub": "return-void", "note": "Push token uplink for tracking" },
+          { "name": "setGCMDeviceToken", "signature": "(Ljava/lang/String;)V", "stub": "return-void", "note": "Legacy push token uplink" },
+          { "name": "setIMEI", "signature": "(Ljava/lang/String;)V", "stub": "return-void", "note": "Device identifier uplink" },
+          { "name": "setWrapperNameAndVersion", "signature": "(Ljava/lang/String;Ljava/lang/String;)V", "stub": "return-void", "note": "Cross-platform wrapper metadata" },
+          { "name": "onActivityResumed", "signature": "()V", "stub": "return-void", "note": "Session start signal" },
+          { "name": "onActivityPaused", "signature": "()V", "stub": "return-void", "note": "Session pause signal" }
+        ]
+      },
+      {
+        "class": "com.singular.sdk.SingularJSInterface",
+        "methods": [
+          { "name": "event", "signature": "*", "stub": "return-void", "note": "@JavascriptInterface WebView -> Singular bridge; (String,String) returns void and (String) returns boolean, patcher stubs each by its real type" },
+          { "name": "revenue", "signature": "(Ljava/lang/String;D)V", "stub": "return-void", "note": "@JavascriptInterface revenue bridge" },
+          { "name": "setCustomUserId", "signature": "(Ljava/lang/String;)V", "stub": "return-void", "note": "@JavascriptInterface" },
+          { "name": "unsetCustomUserId", "signature": "()V", "stub": "return-void", "note": "@JavascriptInterface" }
+        ]
+      }
+    ],
+    "ad_operations": [],
+    "deep_patterns": []
+  },
+  "manifest_components": [
+    {
+      "type": "receiver",
+      "class": "com.singular.sdk.SingularInstallReceiver",
+      "action": "disable",
+      "note": "INSTALL_REFERRER BroadcastReceiver used for install attribution (declared in the app manifest when Singular's own referrer receiver is wired; disable is a no-op if absent)"
+    }
+  ],
+  "protected_patterns": [
+    {
+      "pattern": "*.getGlobalProperties()*",
+      "reason": "Returns a Map the app may read back and dereference; null would risk an NPE. Not a data-sending call, so it is left working"
+    },
+    {
+      "pattern": "*.getSessionId()*",
+      "reason": "Returns the long session id; leave it so any app that reads it keeps a sane value"
+    },
+    {
+      "pattern": "*.getLimitDataSharing()*",
+      "reason": "Privacy-state getter (boolean); reflects the limitDataSharing setting and is left intact"
+    },
+    {
+      "pattern": "*.createReferrerShortLink()*",
+      "reason": "Callback-based: the app awaits a com.singular.sdk.ShortLinkHandler callback with the generated link. Stubbing the void method would leave that callback pending forever, so it is left working"
+    }
+  ]
+}

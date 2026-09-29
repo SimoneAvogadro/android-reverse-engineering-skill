@@ -1,0 +1,104 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "google-analytics",
+  "display_name": "Google Analytics (Universal/legacy)",
+  "description": "Classic Google Analytics for Android — DISTINCT from firebase-analytics (the modern GA4/App+Web SDK, com.google.firebase.analytics). This entry covers Universal Analytics on Play Services (com.google.android.gms.analytics: GoogleAnalytics singleton + Tracker, artifact com.google.android.gms:play-services-analytics / -impl) and the very old v1 SDK (com.google.android.apps.analytics.GoogleAnalyticsTracker). Only fire-and-forget void hit calls are stubbed: Tracker.send/setScreenName and the enable* collection toggles, plus GoogleAnalytics session/dispatch calls. CRITICAL protections: GoogleAnalytics.getInstance (singleton the app dereferences) and Tracker.newTracker (returns the Tracker the app holds and calls send() on) are NOT stubbed — null-returning them would NPE the app. Verified against play-services-analytics-impl 18.2.0 (real javap signatures) and the play-services-analytics AAR manifest; the legacy com.google.android.apps.analytics.* class/methods are from the historical public GA v1 API (not locally decoded or AAR-verified).",
+  "vendor": "Google",
+  "category": "analytics",
+  "known_versions": ["18.2.0"],
+  "packages": [
+    "com.google.android.gms.analytics",
+    "com.google.android.apps.analytics"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "obfuscated",
+    "internal_prefix": "com.google.android.gms.analytics.zz* (1-2 char class names)"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "com.google.android.gms.analytics.Tracker",
+        "methods": [
+          { "name": "send", "signature": "(Ljava/util/Map;)V", "stub": "return-void", "note": "Core hit sender (screenviews/events/timings/transactions); void — the single most important stub for this SDK" },
+          { "name": "setScreenName", "signature": "(Ljava/lang/String;)V", "stub": "return-void", "note": "Screen-view name for the next hit; void" },
+          { "name": "enableAdvertisingIdCollection", "signature": "(Z)V", "stub": "return-void", "note": "Turns on IDFA/advertising-id + IDFV collection; void — neutralizing leaves collection off" },
+          { "name": "enableAutoActivityTracking", "signature": "(Z)V", "stub": "return-void", "note": "Auto screen tracking toggle; void" },
+          { "name": "enableExceptionReporting", "signature": "(Z)V", "stub": "return-void", "note": "Automatic crash/exception reporting toggle; void" }
+        ]
+      },
+      {
+        "class": "com.google.android.gms.analytics.GoogleAnalytics",
+        "methods": [
+          { "name": "dispatchLocalHits", "signature": "()V", "stub": "return-void", "note": "Force-flush queued hits; void" },
+          { "name": "reportActivityStart", "signature": "(Landroid/app/Activity;)V", "stub": "return-void", "note": "Manual session start signal; void" },
+          { "name": "reportActivityStop", "signature": "(Landroid/app/Activity;)V", "stub": "return-void", "note": "Manual session stop signal; void" },
+          { "name": "enableAutoActivityReports", "signature": "(Landroid/app/Application;)V", "stub": "return-void", "note": "Registers auto activity/session reporting; void" }
+        ]
+      },
+      {
+        "class": "com.google.android.apps.analytics.GoogleAnalyticsTracker",
+        "methods": [
+          { "name": "trackEvent", "signature": "*", "stub": "return-void", "note": "Legacy v1 event tracking (category,action,label,value); void" },
+          { "name": "trackPageView", "signature": "(Ljava/lang/String;)V", "stub": "return-void", "note": "Legacy v1 pageview; void" },
+          { "name": "dispatch", "signature": "()Z", "stub": "return-false/0", "note": "Legacy v1 manual dispatch; returns boolean (whether a dispatch was started)" },
+          { "name": "start", "signature": "*", "stub": "return-void", "note": "Legacy v1 tracker start (accountId[,dispatchPeriod],Context); void" },
+          { "name": "startNewSession", "signature": "*", "stub": "return-void", "note": "Legacy v1 session start; void" },
+          { "name": "stop", "signature": "()V", "stub": "return-void", "note": "Legacy v1 session stop; void" }
+        ]
+      }
+    ],
+    "ad_operations": [],
+    "deep_patterns": []
+  },
+  "manifest_components": [
+    {
+      "type": "receiver",
+      "class": "com.google.android.gms.analytics.AnalyticsReceiver",
+      "action": "disable",
+      "note": "Analytics local broadcast receiver (declared in the play-services-analytics AAR manifest)"
+    },
+    {
+      "type": "service",
+      "class": "com.google.android.gms.analytics.AnalyticsService",
+      "action": "disable",
+      "note": "Analytics dispatch service (AAR manifest)"
+    },
+    {
+      "type": "service",
+      "class": "com.google.android.gms.analytics.AnalyticsJobService",
+      "action": "disable",
+      "note": "Analytics JobScheduler dispatch service (AAR manifest)"
+    },
+    {
+      "type": "receiver",
+      "class": "com.google.android.gms.analytics.CampaignTrackingReceiver",
+      "action": "disable",
+      "note": "INSTALL_REFERRER campaign-attribution receiver (present in older integrations)"
+    },
+    {
+      "type": "service",
+      "class": "com.google.android.gms.analytics.CampaignTrackingService",
+      "action": "disable",
+      "note": "Campaign-attribution service paired with CampaignTrackingReceiver (older integrations)"
+    }
+  ],
+  "protected_patterns": [
+    {
+      "pattern": "*.getInstance()*",
+      "reason": "GoogleAnalytics.getInstance(Context) returns the singleton the app immediately dereferences (newTracker/reportActivityStart/...); null would NPE"
+    },
+    {
+      "pattern": "*.newTracker()*",
+      "reason": "GoogleAnalytics.newTracker(int|String) returns the Tracker the app stores and calls send()/setScreenName() on; null-returning it would NPE every subsequent tracker call. Traffic is cut at Tracker.send instead"
+    },
+    {
+      "pattern": "*.getLogger()*",
+      "reason": "GoogleAnalytics.getLogger() returns a Logger object; leave it non-null to avoid NPEs in callers"
+    },
+    {
+      "pattern": "*.setAppOptOut()*",
+      "reason": "Privacy opt-out switch (GoogleAnalytics.setAppOptOut(true) disables all collection). Leave it working; it can only reduce collection"
+    }
+  ]
+}

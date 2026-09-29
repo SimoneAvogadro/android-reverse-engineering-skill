@@ -1,0 +1,89 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "sentry",
+  "display_name": "Sentry",
+  "description": "Sentry crash reporting, error & performance monitoring SDK. Auto-initializes via ContentProviders and installs a global uncaught-exception handler; Exodus classifies it as a tracker (exfiltrates device + usage data).",
+  "vendor": "Sentry (Functional Software, Inc.)",
+  "category": "crash_reporting",
+  "known_versions": ["7.22.6", "8.58.0"],
+  "packages": [
+    "io.sentry"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "mixed"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "io.sentry.android.core.SentryAndroid",
+        "methods": [
+          { "name": "init", "signature": "*", "stub": "return-void", "note": "Android manual init entry (Context[, ILogger][, OptionsConfiguration<SentryAndroidOptions>]) — void; delegates to Sentry.init. Stubbing prevents SDK bootstrap." }
+        ]
+      },
+      {
+        "class": "io.sentry.Sentry",
+        "methods": [
+          { "name": "init", "signature": "*", "stub": "return-void", "note": "Facade init (all overloads void). Primary neutralization: without init the SDK stays a NoOp hub, so capture* below become inert and return SentryId.EMPTY_ID." },
+          { "name": "close", "signature": "*", "stub": "return-void", "note": "void" },
+          { "name": "captureException", "signature": "*", "stub": "return-null", "note": "Returns io.sentry.protocol.SentryId. Stubbed to null (send suppressed). The event id return value is almost never dereferenced by callers; see report for residual risk." },
+          { "name": "captureMessage", "signature": "*", "stub": "return-null", "note": "Returns SentryId → null." },
+          { "name": "captureEvent", "signature": "*", "stub": "return-null", "note": "Returns SentryId → null." },
+          { "name": "captureFeedback", "signature": "*", "stub": "return-null", "note": "Returns SentryId → null." },
+          { "name": "captureCheckIn", "signature": "*", "stub": "return-null", "note": "Returns SentryId → null (cron/monitoring check-ins)." },
+          { "name": "captureUserFeedback", "signature": "*", "stub": "return-void", "note": "void" },
+          { "name": "addBreadcrumb", "signature": "*", "stub": "return-void", "note": "void" },
+          { "name": "setUser", "signature": "*", "stub": "return-void", "note": "void — suppresses PII/user context." },
+          { "name": "setTag", "signature": "*", "stub": "return-void", "note": "void" },
+          { "name": "removeTag", "signature": "*", "stub": "return-void", "note": "void" },
+          { "name": "setExtra", "signature": "*", "stub": "return-void", "note": "void" },
+          { "name": "removeExtra", "signature": "*", "stub": "return-void", "note": "void" },
+          { "name": "setTransaction", "signature": "*", "stub": "return-void", "note": "void" },
+          { "name": "setFingerprint", "signature": "*", "stub": "return-void", "note": "void" },
+          { "name": "setLevel", "signature": "*", "stub": "return-void", "note": "void" },
+          { "name": "clearBreadcrumbs", "signature": "*", "stub": "return-void", "note": "void" },
+          { "name": "startSession", "signature": "*", "stub": "return-void", "note": "void — session/release-health tracking." },
+          { "name": "endSession", "signature": "*", "stub": "return-void", "note": "void" },
+          { "name": "flush", "signature": "*", "stub": "return-void", "note": "void" }
+        ]
+      }
+    ],
+    "ad_operations": [],
+    "deep_patterns": []
+  },
+  "manifest_components": [
+    {
+      "type": "provider",
+      "class": "io.sentry.android.core.SentryInitProvider",
+      "action": "disable",
+      "note": "Auto-init ContentProvider — bootstraps Sentry with no app call. Must be disabled or the SDK starts regardless of the init stub."
+    },
+    {
+      "type": "provider",
+      "class": "io.sentry.android.core.SentryPerformanceProvider",
+      "action": "disable",
+      "note": "Auto-init ContentProvider — records app-start/performance and starts SDK plumbing before Application.onCreate."
+    }
+  ],
+  "protected_patterns": [
+    { "pattern": "*.getCurrentHub()*", "reason": "Returns io.sentry.IHub the app chains on (manual instrumentation); null would NPE. Stays NoOp after init stub." },
+    { "pattern": "*.getCurrentScopes()*", "reason": "Returns io.sentry.IScopes the app chains on; null would NPE." },
+    { "pattern": "*.getGlobalScope()*", "reason": "Returns io.sentry.IScope the app chains on; null would NPE." },
+    { "pattern": "*.getScope()*", "reason": "Returns a scope object the app may chain on; null would NPE." },
+    { "pattern": "*.getSpan()*", "reason": "Returns io.sentry.ISpan the app chains on for manual tracing; null would NPE." },
+    { "pattern": "*.startTransaction()*", "reason": "Returns io.sentry.ITransaction the app chains on (span.finish(), etc.); null would NPE." },
+    { "pattern": "*.getLastEventId()*", "reason": "Returns SentryId; leave real so it yields EMPTY_ID (non-null) via NoOp hub, used to link user feedback." },
+    { "pattern": "*.forkedScopes()*", "reason": "Returns io.sentry.IScopes the app chains on; null would NPE." },
+    { "pattern": "*.forkedRootScopes()*", "reason": "Returns io.sentry.IScopes the app chains on; null would NPE." },
+    { "pattern": "*.forkedCurrentScope()*", "reason": "Returns io.sentry.IScopes the app chains on; null would NPE." },
+    { "pattern": "*.withScope()*", "reason": "Runs an app-supplied ScopeCallback; stubbing to void would silently skip app logic inside the callback." },
+    { "pattern": "*.withIsolationScope()*", "reason": "Runs an app-supplied ScopeCallback; must still invoke the callback." },
+    { "pattern": "*.configureScope()*", "reason": "Runs an app-supplied ScopeCallback; must still invoke the callback." },
+    { "pattern": "*.isEnabled()*", "reason": "Boolean guard apps branch on; leave real (returns false when not initialized)." },
+    { "pattern": "*.isHealthy()*", "reason": "Boolean guard; leave real." },
+    { "pattern": "*.isCrashedLastRun()*", "reason": "Returns java.lang.Boolean the app may unbox; nulling/altering could NPE or change app flow." },
+    { "pattern": "*.continueTrace()*", "reason": "Returns io.sentry.TransactionContext the app chains on; null would NPE." },
+    { "pattern": "*.getTraceparent()*", "reason": "Returns a header object the app may read for distributed tracing." },
+    { "pattern": "*.getBaggage()*", "reason": "Returns a header object the app may read for distributed tracing." }
+  ]
+}

@@ -1,0 +1,84 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "hyprmx",
+  "display_name": "HyprMX",
+  "description": "HyprMX ad SDK — placement-based interstitial and rewarded ads",
+  "vendor": "HyprMX Mobile / Digital Turbine",
+  "category": "ads",
+  "known_versions": ["6.4.2", "5.0"],
+  "packages": [
+    "com.hyprmx.android"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "obfuscated",
+    "internal_prefix": "single letters (com.hyprmx.android.sdk.placement.p, ...)"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "com.hyprmx.android.sdk.core.HyprMX",
+        "methods": [
+          { "name": "initialize", "signature": "*", "stub": "return-void", "note": "Primary disable lever. HyprMX is a Kotlin object (INSTANCE); initialize has void overloads taking a HyprMXInitializationListener or Function1<InitResult>, plus a suspend (Continuation) overload that returns Object -> return-null. The init callback (onHyprMXInitializationComplete/Failed) will NOT fire once stubbed. HANG RISK if the app gates its UI on the init callback; note and verify against the target app." }
+        ]
+      }
+    ],
+    "ad_operations": [
+      {
+        "class": "com.hyprmx.android.sdk.placement.PlacementImpl",
+        "methods": [
+          { "name": "loadAd", "signature": "*", "stub": "return-void", "note": "Concrete Placement implementation in 5.x (readable). loadAd is listener-driven (HyprMXLoadAdListener/Function1<Boolean>); the suspend overload returns Object -> return-null. NOTE: 6.x obfuscates this impl to a single-letter class (e.g. com.hyprmx.android.sdk.placement.p), so on 6.x this target will not match — rely on the HyprMX.initialize entry point there." },
+          { "name": "showAd", "signature": "*", "stub": "return-void" },
+          { "name": "isAdAvailable", "signature": "*", "stub": "return-false/0" }
+        ]
+      }
+    ],
+    "deep_patterns": []
+  },
+  "manifest_components": [
+    {
+      "type": "activity",
+      "class": "com.hyprmx.android.sdk.activity.HyprMXOfferViewerActivity",
+      "action": "disable",
+      "note": "Main ad/offer viewer activity."
+    },
+    {
+      "type": "activity",
+      "class": "com.hyprmx.android.sdk.activity.HyprMXRequiredInformationActivity",
+      "action": "disable",
+      "note": "Required-information collection activity."
+    },
+    {
+      "type": "activity",
+      "class": "com.hyprmx.android.sdk.activity.HyprMXNoOffersActivity",
+      "action": "disable",
+      "note": "No-offers fallback activity."
+    },
+    {
+      "type": "activity",
+      "class": "com.hyprmx.android.sdk.overlay.HyprMXBrowserActivity",
+      "action": "disable",
+      "note": "In-ad browser overlay activity."
+    },
+    {
+      "type": "activity",
+      "class": "com.hyprmx.android.sdk.videoplayer.HyprMXVideoPlayerActivity",
+      "action": "disable",
+      "note": "Video player activity (present in 5.x; harmless if absent in the target)."
+    }
+  ],
+  "protected_patterns": [
+    {
+      "pattern": "com.hyprmx.android.sdk.core.HyprMX.getPlacement*",
+      "reason": "getPlacement(String)/getPlacements() return the @NonNull Placement object(s) the app then calls loadAd/showAd on; returning null would NPE at the first dereference. Ad traffic is cut by stubbing initialize (and loadAd/showAd), not by nulling these getters."
+    },
+    {
+      "pattern": "com.hyprmx.android.sdk.core.HyprMX.getInitializationState*",
+      "reason": "Returns the HyprMXState enum the app checks; leave it working (it naturally reports NOT_INITIALIZED) — nulling an enum getter would NPE."
+    },
+    {
+      "pattern": "*.getName*",
+      "reason": "Placement.getName() returns the placement id string the app may log/route on; leave intact."
+    }
+  ]
+}

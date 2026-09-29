@@ -1,0 +1,116 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "maio",
+  "display_name": "maio",
+  "description": "maio (i-mobile) rewarded/interstitial video ad SDK — legacy v1 (jp.maio.sdk.android) and v2 (jp.maio.sdk.android.v2, incl. banner)",
+  "vendor": "i-mobile Co., Ltd.",
+  "category": "ads",
+  "known_versions": ["2.0.9", "2.0.0", "1.1.16"],
+  "packages": [
+    "jp.maio"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "mixed"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "jp.maio.sdk.android.MaioAds",
+        "methods": [
+          { "name": "init", "signature": "(Landroid/app/Activity;Ljava/lang/String;Ljp/maio/sdk/android/MaioAdsListenerInterface;)V", "stub": "return-void", "note": "v1 global init (all-static MaioAds). Listener-driven: MaioAdsListener.onInitialized/onChangedCanShow will NOT fire once stubbed. HANG RISK if the app blocks on onInitialized. v2 (jp.maio.sdk.android.v2) has no global init — it initialises lazily on loadAd, so its entry point is the loadAd calls below." }
+        ]
+      }
+    ],
+    "ad_operations": [
+      {
+        "class": "jp.maio.sdk.android.MaioAds",
+        "methods": [
+          { "name": "show", "signature": "*", "stub": "return-void", "note": "v1 show() / show(String)." },
+          { "name": "canShow", "signature": "*", "stub": "return-false/0", "note": "v1 canShow() / canShow(String) — boolean, naturally false." }
+        ]
+      },
+      {
+        "class": "jp.maio.sdk.android.MaioAdsInstance",
+        "methods": [
+          { "name": "show", "signature": "*", "stub": "return-void", "note": "v1 non-default-media instance show()." },
+          { "name": "canShow", "signature": "*", "stub": "return-false/0" }
+        ]
+      },
+      {
+        "class": "jp.maio.sdk.android.v2.rewarded.Rewarded",
+        "methods": [
+          { "name": "loadAd", "signature": "*", "stub": "return-null", "note": "v2 static factory loadAd(MaioRequest, Context, IRewardedLoadCallback) returns a Rewarded object -> return-null. Callback (IRewardedLoadCallback.loaded/failed) will NOT fire. HANG/NPE RISK if the app dereferences the returned Rewarded or waits on the callback; show is also stubbed as backstop." },
+          { "name": "show", "signature": "*", "stub": "return-void", "note": "v2 Rewarded.show(Context, IRewardedShowCallback)." }
+        ]
+      },
+      {
+        "class": "jp.maio.sdk.android.v2.rewarded.Rewarded$Companion",
+        "methods": [
+          { "name": "loadAd", "signature": "*", "stub": "return-null", "note": "Kotlin companion backing Rewarded.loadAd; returns Rewarded -> return-null." }
+        ]
+      },
+      {
+        "class": "jp.maio.sdk.android.v2.interstitial.Interstitial",
+        "methods": [
+          { "name": "loadAd", "signature": "*", "stub": "return-null", "note": "v2 static factory loadAd(MaioRequest, Context, IInterstitialLoadCallback) returns an Interstitial object -> return-null. Same callback/no-fire caveat as Rewarded." },
+          { "name": "show", "signature": "*", "stub": "return-void", "note": "v2 Interstitial.show(Context, IInterstitialShowCallback)." }
+        ]
+      },
+      {
+        "class": "jp.maio.sdk.android.v2.interstitial.Interstitial$Companion",
+        "methods": [
+          { "name": "loadAd", "signature": "*", "stub": "return-null", "note": "Kotlin companion backing Interstitial.loadAd; returns Interstitial -> return-null." }
+        ]
+      },
+      {
+        "class": "jp.maio.sdk.android.v2.banner.MaioBannerView",
+        "methods": [
+          { "name": "load", "signature": "*", "stub": "return-void", "note": "v2 banner load() / load(boolean) / load(boolean, String) — void. Listener-driven (MaioBannerListener); no callback fires once stubbed." },
+          { "name": "isReady", "signature": "*", "stub": "return-false/0" }
+        ]
+      }
+    ],
+    "deep_patterns": []
+  },
+  "manifest_components": [
+    {
+      "type": "activity",
+      "class": "jp.maio.sdk.android.AdFullscreenActivity",
+      "action": "disable",
+      "note": "v1 full-screen video ad activity."
+    },
+    {
+      "type": "activity",
+      "class": "jp.maio.sdk.android.HtmlBasedAdActivity",
+      "action": "disable",
+      "note": "v1 HTML/end-card ad activity."
+    },
+    {
+      "type": "activity",
+      "class": "jp.maio.sdk.android.v2.AdActivity",
+      "action": "disable",
+      "note": "v2 full-screen ad activity."
+    },
+    {
+      "type": "activity",
+      "class": "jp.maio.sdk.android.v2.PlayableActivity",
+      "action": "disable",
+      "note": "v2 playable-ad activity."
+    }
+  ],
+  "protected_patterns": [
+    {
+      "pattern": "jp.maio.sdk.android.MaioAds.initWithNonDefaultMediaId*",
+      "reason": "Returns a @NonNull MaioAdsInstance the app then calls show/canShow on; returning null would NPE at the first dereference. Its ad traffic is cut by stubbing the MaioAdsInstance show/canShow methods instead. (Leaving this un-stubbed still triggers v1 init internally, but with MaioAds.init and the instance methods stubbed no ad is shown.)"
+    },
+    {
+      "pattern": "jp.maio.sdk.android.MaioAds.canShow*",
+      "reason": "Already handled as an ad_operation (return-false); listed for clarity — never force it to return true."
+    },
+    {
+      "pattern": "*.getSdkVersion*",
+      "reason": "Returns the SDK version string; harmless, some mediation adapters read it and may NPE on null."
+    }
+  ]
+}

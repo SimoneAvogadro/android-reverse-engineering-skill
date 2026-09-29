@@ -1,0 +1,99 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "superawesome",
+  "display_name": "SuperAwesome AwesomeAds",
+  "description": "SuperAwesome AwesomeAds publisher SDK (tv.superawesome.sdk.publisher:superawesome, real code in the superawesome-base AAR). A kids-focused, COPPA/kidSAFE-certified ad SDK found in Outfit7's Talking Tom/Angela titles and Subway Surfers. The public API is a set of static-method facades — AwesomeAds.init(...) for setup, and SAInterstitialAd / SAVideoAd (static load/hasAdAvailable/play, keyed by integer placement id), the SABannerAd FrameLayout view, and the managed.SAManagedAdView (MRAID/HTML) view for ad operations. All results are delivered through the SAInterface.onEvent(int, SAEvent) callback. API is readable (Kotlin, unobfuscated) and stable across the 8.x-10.x range.",
+  "vendor": "SuperAwesome",
+  "category": "ads",
+  "known_versions": ["10.3.2", "8.5.8"],
+  "packages": [
+    "tv.superawesome.sdk.publisher",
+    "tv.superawesome.lib"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "readable"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "tv.superawesome.sdk.publisher.AwesomeAds",
+        "methods": [
+          { "name": "init", "signature": "*", "stub": "return-void", "note": "Main SDK init. 4 static synchronized void overloads: init(Application|Context, boolean[, Map<String,Object>]) -> void. Stubbing this disables SDK bootstrap; there is no init-completion listener, so no callback hang here" }
+        ]
+      }
+    ],
+    "ad_operations": [
+      {
+        "class": "tv.superawesome.sdk.publisher.SAInterstitialAd",
+        "methods": [
+          { "name": "load", "signature": "*", "stub": "return-void", "note": "7 static void overloads load(int placementId, ..., Context[, String][, Map]) -> void. Prefer stubbing load so no ad is ever fetched or cached. Results normally arrive via SAInterface.onEvent; once load is a no-op, neither adLoaded nor adEmpty/adFailedToLoad fires (see callback-hang note in protected_patterns)" },
+          { "name": "hasAdAvailable", "signature": "(I)Z", "stub": "return-false/0", "note": "static hasAdAvailable(int) -> boolean; false is the natural 'no ad' state once load is stubbed, so callers gating play() on it take the no-ad path" },
+          { "name": "play", "signature": "*", "stub": "return-void", "note": "static play(int, Context) -> void; launches the SAInterstitialAd display activity. Belt-and-suspenders with the manifest disable of that activity" }
+        ]
+      },
+      {
+        "class": "tv.superawesome.sdk.publisher.SAVideoAd",
+        "methods": [
+          { "name": "load", "signature": "*", "stub": "return-void", "note": "7 static void overloads load(int placementId, ..., Context[, String][, Map]) -> void. Stubbing prevents any video ad fetch/cache. Same callback consideration as SAInterstitialAd.load" },
+          { "name": "hasAdAvailable", "signature": "(I)Z", "stub": "return-false/0", "note": "static hasAdAvailable(int) -> boolean; returns false" },
+          { "name": "play", "signature": "*", "stub": "return-void", "note": "static play(int, Context) -> void; launches SAVideoActivity" }
+        ]
+      },
+      {
+        "class": "tv.superawesome.sdk.publisher.SABannerAd",
+        "methods": [
+          { "name": "load", "signature": "*", "stub": "return-void", "note": "Instance (FrameLayout view) load; 7 void overloads load(int placementId[, int, int][, String][, Map]) -> void" },
+          { "name": "hasAdAvailable", "signature": "()Z", "stub": "return-false/0", "note": "instance hasAdAvailable() -> boolean; false" },
+          { "name": "play", "signature": "*", "stub": "return-void", "note": "instance play(Context) -> void; renders the banner. No-op once load is stubbed" },
+          { "name": "close", "signature": "()V", "stub": "return-void", "note": "instance close() -> void; harmless no-op" }
+        ]
+      },
+      {
+        "class": "tv.superawesome.sdk.publisher.managed.SAManagedAdView",
+        "methods": [
+          { "name": "load", "signature": "*", "stub": "return-void", "note": "Instance (RelativeLayout view) load(int placementId, String html, AdViewJavaScriptBridge$Listener) -> void for managed/MRAID HTML ads. Result normally delivered through the listener, which no longer fires once load is a no-op" }
+        ]
+      }
+    ],
+    "deep_patterns": []
+  },
+  "manifest_components": [
+    {
+      "type": "activity",
+      "class": "tv.superawesome.sdk.publisher.SAVideoActivity",
+      "action": "disable",
+      "note": "Fullscreen video ad activity (label SAFullscreenVideoAd); present in the superawesome-base 8.x and 10.x manifests"
+    },
+    {
+      "type": "activity",
+      "class": "tv.superawesome.sdk.publisher.SAInterstitialAd",
+      "action": "disable",
+      "note": "Interstitial display activity. NB this class name is dual-role: it is both the static load/play API facade AND the fullscreen Activity component. Disabling the manifest component only affects the Activity; the static methods are neutralized separately in ad_operations"
+    },
+    {
+      "type": "activity",
+      "class": "tv.superawesome.sdk.publisher.managed.SAManagedAdActivity",
+      "action": "disable",
+      "note": "Managed/MRAID (HTML/WebView) interstitial display activity (label SAManagedInterstitialAd)"
+    }
+  ],
+  "protected_patterns": [
+    {
+      "pattern": "tv.superawesome.sdk.publisher.SAInterface.onEvent*",
+      "reason": "onEvent(int, SAEvent) is the single callback bridge through which the SDK delivers every ad event (adLoaded, adEmpty, adFailedToLoad, adShown, adEnded, adClosed, ...) to the app's listener. It must never be stubbed. Callback-hang risk: because load is stubbed to return-void, the SDK never fetches an ad and therefore never fires ANY onEvent result — neither adLoaded nor adEmpty/adFailedToLoad. Apps that gate flow on hasAdAvailable() (returns false) or simply skip when no adLoaded arrives are unaffected; an app that shows a blocking 'loading ad' UI and waits for a load result event before continuing could hang. If that is observed, revert SAInterstitialAd/SAVideoAd/SAManagedAdView load stubs and instead disable only the display activities + play(). Not auto-targeted (no deep_patterns), listed as a guard for package-wide sweeps"
+    },
+    {
+      "pattern": "tv.superawesome.sdk.publisher.*.getAd*",
+      "reason": "SAInterstitialAd.getAd(int)/SAVideoAd.getAd(int)/SABannerAd.getAd() return the SAAd model object; returning null could NPE if a caller dereferences it. Not an ad-fetch trigger, so leave working"
+    },
+    {
+      "pattern": "tv.superawesome.sdk.publisher.SAVideoAd.getListener*",
+      "reason": "getListener()/getListener(int) return the SAInterface the app registered; returning null would break the app's own event handling. Object-returning getter, not an ad operation"
+    },
+    {
+      "pattern": "tv.superawesome.sdk.publisher.AwesomeAds.getFeatureFlags*",
+      "reason": "Static getFeatureFlags() returns a FeatureFlags object the app may query; returning null could NPE. Object-returning getter, harmless once init is stubbed"
+    }
+  ]
+}

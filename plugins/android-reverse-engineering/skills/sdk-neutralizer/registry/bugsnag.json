@@ -1,0 +1,69 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "bugsnag",
+  "display_name": "Bugsnag",
+  "description": "Bugsnag (SmartBear) crash/error monitoring SDK. Bugsnag.start() constructs the Client, installs a global uncaught-exception handler and begins session/error delivery; Exodus classifies it as a tracker. NOTE: the static facade delegates every call to getClient(), which throws IllegalStateException before start() — so all app-callable void/primitive delegators are stubbed to prevent that throw once start() is neutralized.",
+  "vendor": "Bugsnag / SmartBear",
+  "category": "crash_reporting",
+  "known_versions": ["5.31.3", "6.27.1"],
+  "packages": [
+    "com.bugsnag"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "mixed"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "com.bugsnag.android.Bugsnag",
+        "methods": [
+          { "name": "start", "signature": "*", "stub": "return-null", "note": "Init. Returns com.bugsnag.android.Client. Stubbed to null so the Client is never constructed -> no uncaught-exception handler, no session/error delivery. Residual risk: apps that chain on the returned Client, or call the protected object-getters below, hit the not-started path (see report)." },
+          { "name": "notify", "signature": "*", "stub": "return-void", "note": "void — manual error report. Stubbed so it no-ops instead of delegating to getClient() (which would throw when not started)." },
+          { "name": "leaveBreadcrumb", "signature": "*", "stub": "return-void", "note": "void" },
+          { "name": "setUser", "signature": "*", "stub": "return-void", "note": "void — suppresses PII/user context." },
+          { "name": "setContext", "signature": "*", "stub": "return-void", "note": "void" },
+          { "name": "setGroupingDiscriminator", "signature": "*", "stub": "return-null", "note": "Returns java.lang.String (previous value). Delegates to getClient(); stubbed to avoid the not-started throw. Return value rarely used." },
+          { "name": "addMetadata", "signature": "*", "stub": "return-void", "note": "void" },
+          { "name": "clearMetadata", "signature": "*", "stub": "return-void", "note": "void" },
+          { "name": "startSession", "signature": "*", "stub": "return-void", "note": "void" },
+          { "name": "pauseSession", "signature": "*", "stub": "return-void", "note": "void" },
+          { "name": "resumeSession", "signature": "*", "stub": "return-false/0", "note": "Returns boolean; stub false." },
+          { "name": "markLaunchCompleted", "signature": "*", "stub": "return-void", "note": "void" },
+          { "name": "addFeatureFlag", "signature": "*", "stub": "return-void", "note": "void" },
+          { "name": "addFeatureFlags", "signature": "*", "stub": "return-void", "note": "void" },
+          { "name": "clearFeatureFlag", "signature": "*", "stub": "return-void", "note": "void" },
+          { "name": "clearFeatureFlags", "signature": "*", "stub": "return-void", "note": "void" },
+          { "name": "addOnError", "signature": "*", "stub": "return-void", "note": "void — registers a callback; delegator to getClient()." },
+          { "name": "removeOnError", "signature": "*", "stub": "return-void", "note": "void" },
+          { "name": "addOnBreadcrumb", "signature": "*", "stub": "return-void", "note": "void" },
+          { "name": "removeOnBreadcrumb", "signature": "*", "stub": "return-void", "note": "void" },
+          { "name": "addOnSession", "signature": "*", "stub": "return-void", "note": "void" },
+          { "name": "removeOnSession", "signature": "*", "stub": "return-void", "note": "void" },
+          { "name": "setOutOfMemoryHandler", "signature": "*", "stub": "return-void", "note": "void" }
+        ]
+      }
+    ],
+    "ad_operations": [],
+    "deep_patterns": []
+  },
+  "manifest_components": [
+    {
+      "type": "provider",
+      "class": "com.bugsnag.android.internal.BugsnagContentProvider",
+      "action": "disable",
+      "note": "Auto-registered ContentProvider (Bugsnag 6.x+) that gathers process/app-start info early. Disable for hygiene; absent in 5.x (disable is best-effort / no-op when not present)."
+    }
+  ],
+  "protected_patterns": [
+    { "pattern": "*.getClient()*", "reason": "Returns com.bugsnag.android.Client the app may dereference; must not be nulled. (Note: with start() stubbed the real impl throws IllegalStateException — apps should guard with isStarted(); see report.)" },
+    { "pattern": "*.isStarted()*", "reason": "Must stay real: returns false when not started (reads the static client field, never throws), so isStarted()-guarded code correctly skips getClient()." },
+    { "pattern": "*.getUser()*", "reason": "Returns com.bugsnag.android.User the app may read; do not null." },
+    { "pattern": "*.getContext()*", "reason": "Returns java.lang.String context the app may read." },
+    { "pattern": "*.getGroupingDiscriminator()*", "reason": "Returns java.lang.String the app may read." },
+    { "pattern": "*.getBreadcrumbs()*", "reason": "Returns a List the app may iterate; null would NPE." },
+    { "pattern": "*.getMetadata()*", "reason": "Returns a Map/Object the app may read; null could break app logic." },
+    { "pattern": "*.getLastRunInfo()*", "reason": "Returns com.bugsnag.android.LastRunInfo the app reads to detect a prior crash; do not null." },
+    { "pattern": "*.getOutOfMemoryHandler()*", "reason": "Returns a handler object the app may hold; do not null." }
+  ]
+}
