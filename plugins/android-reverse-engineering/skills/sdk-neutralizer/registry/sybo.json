@@ -1,0 +1,38 @@
+{
+  "$schema": "./_schema.json",
+  "sdk_id": "sybo",
+  "display_name": "SYBO (in-house analytics)",
+  "description": "SYBO's own analytics/telemetry layer (publisher of Subway Surfers and other SYBO titles). AnalyticsBridge is the game-facing lever that schedules WorkManager jobs to flush/upload event data over HTTPS, including while the app is closed. Detected as an in-house wrapper. Does NOT touch com.sybo.consent (the age-gate/consent layer) or com.sybo.native_sharing.",
+  "vendor": "SYBO Games",
+  "category": "analytics",
+  "in_house_wrapper": true,
+  "known_versions": ["3.69.2"],
+  "packages": [
+    "com.sybo.analytics"
+  ],
+  "obfuscation": {
+    "public_api": "readable",
+    "internals": "mixed"
+  },
+  "targets": {
+    "entry_points": [
+      {
+        "class": "com.sybo.analytics.AnalyticsBridge",
+        "methods": [
+          { "name": "SetupWorkerForAppClosed", "signature": "*", "stub": "return-void", "note": "Schedules a WorkManager job to flush analytics while the app is closed — stubbing prevents the background upload from ever being scheduled" },
+          { "name": "SetupWorkerForAppRunning", "signature": "*", "stub": "return-void", "note": "Schedules the flush-while-running worker (pulls data from the game via FlushWhileRunningCallback); fire-and-forget, the game does not await it" },
+          { "name": "StopWorkerForAppRunning", "signature": "*", "stub": "return-void", "note": "No-op once the workers are never scheduled" }
+        ]
+      }
+    ],
+    "ad_operations": [],
+    "deep_patterns": []
+  },
+  "manifest_components": [],
+  "protected_patterns": [
+    { "pattern": "*.GetCountryISO3CodeUpper()*", "reason": "Returns a country ISO code String the game may read/parse — a null could crash the caller" },
+    { "pattern": "*.GetData()*", "reason": "FlushWhileRunningCallback: the game-supplied callback the worker uses to pull data; never stub the callback bridge" },
+    { "pattern": "*.HasData()*", "reason": "FlushWhileRunningCallback bridge method — leave the game's callback intact" },
+    { "pattern": "*.OnDataSendComplete()*", "reason": "FlushWhileRunningCallback bridge method — leave the game's callback intact" }
+  ]
+}

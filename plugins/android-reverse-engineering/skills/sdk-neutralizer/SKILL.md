@@ -160,7 +160,7 @@ Ask the user which depth level to use. Default to depth 1 unless they request mo
 
 #### Phase 3a — Registry Scan (Known SDKs)
 
-Run `registry-scan.py` to match the decoded APK against the SDK registry (46 SDKs, 366 entry points, 355 ad operations, 31 deep patterns).
+Run `registry-scan.py` to match the decoded APK against the SDK registry (47 SDKs, 369 entry points, 355 ad operations, 31 deep patterns).
 
 **Action**: Run registry scan.
 

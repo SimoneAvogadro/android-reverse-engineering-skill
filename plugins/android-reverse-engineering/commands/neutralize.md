@@ -107,7 +107,7 @@ Known third-party SDKs and common libraries are excluded, so a genuine third-par
 
 ### Step 5: Identify targets — Registry Scan
 
-The decoded directory contains smali bytecode. Use `registry-scan.py` to match against the SDK registry (46 SDKs, 366 entry points, 355 ad operations).
+The decoded directory contains smali bytecode. Use `registry-scan.py` to match against the SDK registry (47 SDKs, 369 entry points, 355 ad operations).
 
 **5a. Run registry scan:**
 
