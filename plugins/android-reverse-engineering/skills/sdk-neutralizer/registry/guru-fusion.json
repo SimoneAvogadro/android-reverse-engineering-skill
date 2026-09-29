@@ -5,6 +5,7 @@
   "description": "Guru Fusion Ads SDK — ad mediation wrapper for AdMob, IronSource, AppLovin MAX",
   "vendor": "Guru",
   "category": "ads_mediation",
+  "in_house_wrapper": true,
   "known_versions": [],
   "packages": [
     "guru.ads.fusion"

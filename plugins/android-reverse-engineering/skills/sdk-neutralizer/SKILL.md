@@ -42,7 +42,7 @@ This skill requires an APK file or a split APK bundle (XAPK/APKM/APKS). It will 
 
 Required tools: `java 17+`, `apktool`, `unzip`, and Android SDK Build-Tools (`apksigner` + `zipalign`; build-tools 35+ for `zipalign -P 16`), plus [APKEditor](https://github.com/REAndroid/APKEditor) for XAPK/APKM/APKS input. zipalign is **required** whenever the APK has stored native libraries with `extractNativeLibs="false"` (the rebuild fails without it). `jarsigner` is only a v1-signature fallback for apps targeting SDK < 30.
 
-**Windows**: `check-neutralize-deps.ps1`, `decode-apk.ps1`, `detect-protection.ps1` and `rebuild-apk.ps1` (PowerShell 5.1+) mirror the bash scripts, with PowerShell-style flags (`-Output`, `-KeepSplits`, `-AutoKeystore`, ...). `neutralize.sh` and `registry-scan.py` still require bash and python3 (WSL or Git Bash) for now. Example:
+**Windows**: `check-neutralize-deps.ps1`, `decode-apk.ps1`, `detect-protection.ps1`, `detect-adwrapper.ps1` and `rebuild-apk.ps1` (PowerShell 5.1+) mirror the bash scripts, with PowerShell-style flags (`-Output`, `-KeepSplits`, `-AutoKeystore`, ...). `neutralize.sh` and `registry-scan.py` still require bash and python3 (WSL or Git Bash) for now. Example:
 
 ```
 powershell -NoProfile -ExecutionPolicy Bypass -File <plugin-root>\skills\sdk-neutralizer\scripts\decode-apk.ps1 C:\apks\app.xapk -Output C:\work\app-decoded
@@ -127,6 +127,26 @@ Set expectations with the user **before** Phase 3, according to the summary:
 
 **Never try to remove, disable, patch around or otherwise defeat a protection.** This skill only detects it and informs the user. With a `medium` confidence hardener match, say that the match is probable, not certain.
 
+### Phase 2c: In-house Ad-Wrapper Check (detection only)
+
+Some publishers ship their own in-house ad/analytics mediation wrapper: an app-owned layer that drives the third-party network SDKs (AdMob, AppLovin, IronSource, ...) AND can serve direct WebView/MRAID "house" interstitials with **no** third-party SDK involved. Neutralizing every network SDK from the registry does **not** stop that house-ad path. Concrete examples: Rovio's `com.rovio.beacon` (Bad Piggies / Angry Birds), Guru's `guru.ads.fusion` — both now have dedicated registry entries flagged `"in_house_wrapper": true`.
+
+`decode-apk.sh` runs this check automatically after a successful decode (its exit code is unchanged). To run it again:
+
+```bash
+bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/detect-adwrapper.sh <decoded-dir>
+```
+
+Parse:
+- `ADWRAPPER_DETECTED:<package>:<high|medium|low>:<evidence,...>` — one line per candidate wrapper (evidence keys: `adclasses`, `networks`, `webview`, `mraid`, `analytics`, `vendor`, and `registry=<sdk_id>` when a dedicated entry already exists)
+- `ADWRAPPER_SUMMARY:<none|candidate>`
+
+If a candidate is found, tell the user this app has an in-house ads wrapper at `<package>` and that the network-SDK neutralization may not fully stop ads. Then:
+- If the evidence has `registry=<sdk_id>`, a dedicated entry already exists — make sure it is applied (it is picked up by Phase 3a automatically).
+- Otherwise, run the unknown-SDK **discovery workflow** (Phase 3b/3c) on `<package>` and consider adding a dedicated registry entry for it.
+
+The detector excludes known third-party SDKs (from the registry) and common libraries, so a genuine third-party ad SDK is **not** reported as an in-house wrapper. It never modifies anything.
+
 ### Phase 3: Identify Targets
 
 Target identification has four sub-phases. The goal is to combine deterministic registry matching with heuristic discovery for maximum coverage.
@@ -177,6 +197,7 @@ bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/neutralize.sh <decoded
 
 Activate this sub-phase when:
 - `registry-scan.py` reported `UNKNOWN_PACKAGE:` candidates
+- Phase 2c (`detect-adwrapper.sh`) reported `ADWRAPPER_DETECTED:` for a package **without** a `registry=` annotation (an in-house wrapper with no dedicated registry entry yet — a prime discovery target)
 - The user asks to discover SDKs beyond the registry
 - Few matches in Phase 3a but the user expects more
 

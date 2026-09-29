@@ -91,6 +91,8 @@ Output:
   XAPK_ORIGIN:<path>                                    (-KeepSplits only)
   PROTECTION_DETECTED:... / PROTECTION_SUMMARY:<kind>   (detect-protection.ps1, run
                                                         after a successful decode)
+  ADWRAPPER_DETECTED:... / ADWRAPPER_SUMMARY:<kind>     (detect-adwrapper.ps1, run
+                                                        after a successful decode)
 All paths are absolute. The output directory is replaced only after a successful
 decode (the new tree is decoded next to it, then swapped in).
 "@
@@ -574,6 +576,20 @@ if (Test-Path -LiteralPath $detectProtection -PathType Leaf) {
         if ($LASTEXITCODE -ne 0) { throw "exit code $LASTEXITCODE" }
     } catch {
         Write-Host "[WARN] Protection check failed ($_); run detect-protection.ps1 manually." -ForegroundColor Yellow
+    }
+}
+
+# In-house ad/analytics wrapper check (detection only, informational): a
+# publisher's own wrapper can serve house/WebView ads that survive neutralizing
+# the third-party network SDKs. Never changes the decode result or exit code.
+$detectAdwrapper = Join-Path $PSScriptRoot 'detect-adwrapper.ps1'
+if (Test-Path -LiteralPath $detectAdwrapper -PathType Leaf) {
+    Write-Host ""
+    try {
+        & $detectAdwrapper -DecodedDir $outputAbs
+        if ($LASTEXITCODE -ne 0) { throw "exit code $LASTEXITCODE" }
+    } catch {
+        Write-Host "[WARN] Ad-wrapper check failed ($_); run detect-adwrapper.ps1 manually." -ForegroundColor Yellow
     }
 }
 exit 0

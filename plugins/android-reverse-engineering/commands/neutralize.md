@@ -50,7 +50,7 @@ bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/check-neutralize-deps.
 
 (Passing the file makes APKEditor required for XAPK/APKM/APKS input.)
 
-On Windows without bash, `check-neutralize-deps.ps1`, `decode-apk.ps1`, `detect-protection.ps1` and `rebuild-apk.ps1` (PowerShell 5.1) are available; `neutralize.sh` and `registry-scan.py` still require bash + python3 (WSL or Git Bash) for now.
+On Windows without bash, `check-neutralize-deps.ps1`, `decode-apk.ps1`, `detect-protection.ps1`, `detect-adwrapper.ps1` and `rebuild-apk.ps1` (PowerShell 5.1) are available; `neutralize.sh` and `registry-scan.py` still require bash + python3 (WSL or Git Bash) for now.
 
 If any `INSTALL_REQUIRED:` lines appear, install all dependencies at once (java, apktool, apkeditor, build-tools, zip). `build-tools` is Google's Android SDK Build-Tools (zipalign + apksigner), licensed under the Android Software Development Kit License Agreement (https://developer.android.com/studio/terms): show the user this link and ask for explicit acceptance **before** passing `--accept-android-sdk-license`. Never accept it on the user's behalf:
 
@@ -90,6 +90,20 @@ Read `PROTECTION_DETECTED:<id>:<category>:<confidence>:<evidence>` and `PROTECTI
 - `integrity` (Play Integrity / SafetyNet client, often bundled by SDKs): the app starts; note it in the report.
 
 Never try to remove, disable or work around a protection: only report it.
+
+### Step 4c: In-house ad-wrapper check (detection only)
+
+`decode-apk.sh` also ends with an in-house ad/analytics wrapper check (`detect-adwrapper.sh`, informational, exit code unchanged). Re-run it with:
+
+```bash
+bash ${CLAUDE_PLUGIN_ROOT}/skills/sdk-neutralizer/scripts/detect-adwrapper.sh "${DECODED_DIR}"
+```
+
+Read `ADWRAPPER_DETECTED:<package>:<confidence>:<evidence>` and `ADWRAPPER_SUMMARY:<none|candidate>`. A candidate is a publisher's own layer that drives the network SDKs (or serves house/WebView ads) itself — so neutralizing the third-party network SDKs may **not** fully stop ads (e.g. Rovio's `com.rovio.beacon`). If reported:
+- with `registry=<sdk_id>` in the evidence, a dedicated registry entry already exists — make sure it is applied (Step 5 picks it up automatically);
+- otherwise, run the unknown-SDK discovery pass (SKILL.md Phases 3b/3c) on `<package>` and consider a dedicated registry entry.
+
+Known third-party SDKs and common libraries are excluded, so a genuine third-party ad SDK is not flagged as an in-house wrapper. Detection only — nothing is modified.
 
 ### Step 5: Identify targets — Registry Scan
 

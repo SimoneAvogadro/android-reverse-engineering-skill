@@ -34,6 +34,10 @@
       "items": { "type": "string" },
       "description": "SDK versions tested against (for reference only)"
     },
+    "in_house_wrapper": {
+      "type": "boolean",
+      "description": "True when this entry is a publisher's own in-house ad/analytics mediation wrapper (it calls third-party network SDKs, or serves house/WebView ads, on the app's behalf) rather than a third-party SDK. Metadata only: registry-scan.py ignores it; detect-adwrapper.sh uses it so it does NOT treat this package as a known third-party SDK to exclude, and can flag the app as carrying an in-house wrapper."
+    },
     "packages": {
       "type": "array",
       "items": { "type": "string" },

@@ -77,6 +77,8 @@ Output:
   XAPK_ORIGIN:<path>                                    (--keep-splits only)
   PROTECTION_DETECTED:... / PROTECTION_SUMMARY:<kind>   (detect-protection.sh, run
                                                         after a successful decode)
+  ADWRAPPER_DETECTED:... / ADWRAPPER_SUMMARY:<kind>     (detect-adwrapper.sh, run
+                                                        after a successful decode)
 All paths are absolute. The output directory is replaced only after a successful
 decode (the new tree is decoded next to it, then swapped in).
 EOF
@@ -629,5 +631,16 @@ if [[ -f "$DETECT_PROTECTION" ]]; then
   # From the decoded dir: the working directory used above has been deleted
   (cd "$OUTPUT_ABS" && bash "$DETECT_PROTECTION" "$OUTPUT_ABS") ||
     echo "[WARN] Protection check failed; run detect-protection.sh manually."
+fi
+
+# In-house ad/analytics wrapper check (detection only, informational): a
+# publisher's own wrapper can serve house/WebView ads that survive neutralizing
+# the third-party network SDKs. Warn now, and point at the discovery workflow.
+# Never changes the decode result or exit code.
+DETECT_ADWRAPPER="$SCRIPT_DIR/detect-adwrapper.sh"
+if [[ -f "$DETECT_ADWRAPPER" ]]; then
+  echo
+  (cd "$OUTPUT_ABS" && bash "$DETECT_ADWRAPPER" "$OUTPUT_ABS") ||
+    echo "[WARN] Ad-wrapper check failed; run detect-adwrapper.sh manually."
 fi
 exit 0
