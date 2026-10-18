@@ -22,6 +22,7 @@ Available dependencies:
   dex2jar      DEX to JAR converter
   apktool      Android resource decoder
   adb          Android Debug Bridge
+  asc          ASC (Android Source Code) decompiler (pip install droidasc)
 
 The script detects your OS and package manager, then:
   - Installs directly if possible (brew, or user-local install)
@@ -429,6 +430,43 @@ install_adb() {
   fi
 }
 
+install_asc() {
+  if command -v droidasc &>/dev/null || command -v rust_ASC &>/dev/null; then
+    ok "ASC already installed"
+    return 0
+  fi
+
+  info "Installing ASC (droidasc) via pip..."
+  local pip_cmd=""
+  if command -v pip3 &>/dev/null; then
+    pip_cmd="pip3"
+  elif command -v pip &>/dev/null; then
+    pip_cmd="pip"
+  elif command -v python3 &>/dev/null; then
+    pip_cmd="python3 -m pip"
+  elif command -v python &>/dev/null; then
+    pip_cmd="python -m pip"
+  fi
+
+  if [[ -n "$pip_cmd" ]]; then
+    $pip_cmd install --upgrade droidasc
+  else
+    manual "Python 3 and pip are required to install droidasc. Run: pip install droidasc or compile rust_ASC from https://github.com/MG1937/rust_ASC"
+  fi
+
+  if command -v droidasc &>/dev/null || command -v rust_ASC &>/dev/null || python3 -m droidasc --help &>/dev/null; then
+    ok "ASC installed successfully"
+  else
+    if [[ -f "$HOME/.local/bin/droidasc" ]]; then
+      export PATH="$HOME/.local/bin:$PATH"
+      add_to_profile 'export PATH="$HOME/.local/bin:$PATH"'
+      ok "ASC installed to $HOME/.local/bin"
+    else
+      info "droidasc installed via pip. Ensure your Python user scripts directory (e.g. ~/.local/bin) is in PATH."
+    fi
+  fi
+}
+
 # =====================================================================
 # Dispatch
 # =====================================================================
@@ -440,9 +478,10 @@ case "$DEP" in
   dex2jar)     install_dex2jar ;;
   apktool)     install_apktool ;;
   adb)         install_adb ;;
+  asc|droidasc) install_asc ;;
   *)
     echo "Error: Unknown dependency '$DEP'" >&2
-    echo "Available: java, jadx, vineflower, dex2jar, apktool, adb" >&2
+    echo "Available: java, jadx, vineflower, dex2jar, apktool, adb, asc" >&2
     exit 1
     ;;
 esac

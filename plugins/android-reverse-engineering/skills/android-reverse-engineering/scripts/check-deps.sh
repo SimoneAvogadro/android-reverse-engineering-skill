@@ -100,6 +100,20 @@ else
   missing_optional+=("adb")
 fi
 
+# --- Optional: ASC (Android Source Code) decompiler ---
+if command -v droidasc &>/dev/null; then
+  echo "[OK] ASC detected (droidasc CLI)"
+elif command -v rust_ASC &>/dev/null; then
+  echo "[OK] ASC detected (rust_ASC binary)"
+elif python3 -m droidasc --help &>/dev/null; then
+  echo "[OK] ASC detected (python3 -m droidasc)"
+elif python -m droidasc --help &>/dev/null; then
+  echo "[OK] ASC detected (python -m droidasc)"
+else
+  echo "[MISSING] ASC (Android Source Code) not found (optional — ultra-fast on-demand agent decompiler)"
+  missing_optional+=("asc")
+fi
+
 # --- Machine-readable summary ---
 echo
 if [[ ${#missing_required[@]} -gt 0 ]]; then

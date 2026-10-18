@@ -24,7 +24,10 @@ Write-Host ""
 $javaOk = $false
 $javaBin = Get-Command java -ErrorAction SilentlyContinue
 if ($javaBin) {
+    $origEAP = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
     $javaVersionOutput = & java -version 2>&1 | Select-Object -First 1
+    $ErrorActionPreference = $origEAP
     $javaVersionStr = "$javaVersionOutput"
     if ($javaVersionStr -match '"(\d+)') {
         $javaVersion = [int]$Matches[1]
@@ -138,6 +141,33 @@ if (Get-Command adb -ErrorAction SilentlyContinue) {
 } else {
     Write-Host "[MISSING] adb not found (optional - useful for pulling APKs from devices)"
     $missingOptional += "adb"
+}
+
+# --- Optional: ASC (Android Source Code) decompiler ---
+$ascFound = $false
+$ascBin = Get-Command droidasc -ErrorAction SilentlyContinue
+if (-not $ascBin) {
+    $ascBin = Get-Command rust_ASC -ErrorAction SilentlyContinue
+}
+if (-not $ascBin) {
+    $ascBin = Get-Command rust_ASC.exe -ErrorAction SilentlyContinue
+}
+if ($ascBin) {
+    Write-Host "[OK] ASC detected ($($ascBin.Name))"
+    $ascFound = $true
+} else {
+    # Check Python module execution or Python Scripts directories
+    try {
+        $pyHelp = & python -m droidasc --help 2>&1 | Select-Object -First 1
+        if ($pyHelp -match 'ASC|droidasc') {
+            Write-Host "[OK] ASC detected (python -m droidasc)"
+            $ascFound = $true
+        }
+    } catch {}
+}
+if (-not $ascFound) {
+    Write-Host "[MISSING] ASC not found (optional - ultra-fast on-demand agent decompiler)"
+    $missingOptional += "asc"
 }
 
 # --- Machine-readable summary ---

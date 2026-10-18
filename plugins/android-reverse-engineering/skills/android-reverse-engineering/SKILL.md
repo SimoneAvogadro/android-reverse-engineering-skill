@@ -1,12 +1,12 @@
 ---
 name: android-reverse-engineering
-description: Decompile Android APK, XAPK, JAR, and AAR files using jadx or Fernflower/Vineflower. Reverse engineer Android apps, extract HTTP API endpoints (Retrofit, OkHttp, Volley), and trace call flows from UI to network layer. Use when the user wants to decompile, analyze, or reverse engineer Android packages, find API endpoints, or follow call flows. 中文触发词：反编译APK、安卓逆向、提取API、分析安卓应用、反编译安卓、逆向工程、追踪调用链、提取接口
-trigger: decompile APK|decompile XAPK|reverse engineer Android|extract API|analyze Android|jadx|fernflower|vineflower|follow call flow|decompile JAR|decompile AAR|Android reverse engineering|find API endpoints|反编译APK|安卓逆向|提取API|分析安卓应用
+description: Decompile Android APK, XAPK, JAR, and AAR files using jadx, Fernflower/Vineflower, or ASC (Android Source Code). Reverse engineer Android apps, extract HTTP API endpoints (Retrofit, OkHttp, Volley, Ktor, Apollo GraphQL), and trace call flows from UI to network layer. Use when the user wants to decompile, analyze, or reverse engineer Android packages, find API endpoints, or follow call flows. 中文触发词：反编译APK、安卓逆向、提取API、分析安卓应用、反编译安卓、逆向工程、追踪调用链、提取接口
+trigger: decompile APK|decompile XAPK|reverse engineer Android|extract API|analyze Android|jadx|fernflower|vineflower|asc|droidasc|follow call flow|decompile JAR|decompile AAR|Android reverse engineering|find API endpoints|反编译APK|安卓逆向|提取API|分析安卓应用
 ---
 
 # Android Reverse Engineering
 
-Decompile Android APK, XAPK, JAR, and AAR files using jadx and Fernflower/Vineflower, trace call flows through application code and libraries, and produce structured documentation of extracted APIs. Two decompiler engines are supported — jadx for broad Android coverage and Fernflower for higher-quality output on complex Java code — and can be used together for comparison.
+Decompile Android APK, XAPK, JAR, and AAR files using jadx, Fernflower/Vineflower, and ASC (Android Source Code), trace call flows through application code and libraries, and produce structured documentation of extracted APIs. Three decompiler engines are supported — jadx for broad Android coverage, Fernflower for higher-quality output on complex Java code, and ASC for ultra-fast on-demand agent querying and memory-efficient analysis of large APKs — and can be used individually or side-by-side for comparison.
 
 ## Prerequisites
 
@@ -112,25 +112,34 @@ For **XAPK** files (ZIP bundles containing multiple APKs, used by APKPure and si
 
 Options:
 - `-o <dir>` — Custom output directory (default: `<filename>-decompiled`)
+- `-c <class>` — Target a specific class to decompile (instant single-class extraction)
 - `--deobf` — Enable deobfuscation (recommended for obfuscated apps)
 - `--no-res` — Skip resources, decompile code only (faster)
-- `--engine ENGINE` — `jadx` (default), `fernflower`, or `both`
+- `--engine ENGINE` — `jadx` (default), `fernflower`, `asc`, or `both`
 
 **Engine selection strategy**:
 
 | Situation | Engine |
 |---|---|
-| First pass on any APK | `jadx` (fastest, handles resources) |
+| First pass on standard APK | `jadx` (fastest, handles resources) |
+| Large APK (>50MB) or memory-constrained | `asc` (zero pre-indexing, low RAM) |
+| Instant inspection of a single class | `asc -c <ClassName>` (~180ms) |
 | JAR/AAR library analysis | `fernflower` (better Java output) |
 | jadx output has warnings/broken code | `both` (compare and pick best per class) |
 | Complex lambdas, generics, streams | `fernflower` |
-| Quick overview of a large APK | `jadx --no-res` |
+| Quick overview of an APK | `jadx --no-res` or `asc` |
 
 When using `--engine both`, the outputs go into `<output>/jadx/` and `<output>/fernflower/` respectively, with a comparison summary at the end showing file counts and jadx warning counts. Review classes with jadx warnings in the Fernflower output for better code.
 
 For APK files with Fernflower, the script automatically uses dex2jar as an intermediate step. dex2jar must be installed for this to work.
 
-See `${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/references/jadx-usage.md` and `${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/references/fernflower-usage.md` for the full CLI references.
+For rapid on-demand queries without decompiling the full APK (e.g. searching strings, reading manifest, finding callers), use ASC directly:
+```bash
+bash ${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/asc-query.sh <apk> getclass <class>
+bash ${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/asc-query.sh <apk> findrefs string "https://"
+```
+
+See `${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/references/jadx-usage.md`, `${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/references/fernflower-usage.md`, and `${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/references/asc-usage.md` for full CLI references.
 
 ### Phase 3: Analyze Structure
 

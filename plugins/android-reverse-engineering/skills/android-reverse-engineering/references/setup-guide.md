@@ -208,14 +208,48 @@ adb pull /data/app/com.example.app-xxxx/base.apk ./app.apk
 
 ---
 
+## ASC (Android Source Code) decompiler (optional, recommended for large APKs)
+
+[ASC](https://github.com/MG1937/ASC) is an ultra-fast on-demand Android decompiler designed for AI agents and rapid security analysis. It queries DEX files directly in memory without inflating or pre-indexing the entire APK.
+
+### Option 1: Python Package (droidasc)
+
+```bash
+pip install --upgrade droidasc
+```
+
+Verify:
+```bash
+droidasc --help
+```
+
+### Option 2: Rust Native Binary (rust_ASC)
+
+For 10x faster execution and native multi-threading:
+
+```bash
+git clone https://github.com/MG1937/rust_ASC.git
+cd rust_ASC
+cargo build --release
+# Copy target/release/rust_ASC to a directory in your PATH
+```
+
+Verify:
+```bash
+rust_ASC --help
+```
+
+---
+
 ## Troubleshooting
 
 | Problem | Solution |
 |---|---|
 | `jadx: command not found` | Ensure the jadx `bin/` directory is in your `$PATH` |
 | `Error: Could not find or load main class` | Java is missing or wrong version — verify with `java -version` |
-| jadx runs out of memory on large APKs | Increase heap: `jadx -Xmx4g -d output app.apk` or set `JAVA_OPTS="-Xmx4g"` |
+| jadx runs out of memory or hangs on large APKs | Increase heap (`-Xmx4g`) or switch to ASC: `decompile.sh --engine asc app.apk` |
 | Decompiled code has many `// Error` comments | Try `--show-bad-code` to see partial output, or use `--deobf` for obfuscated apps |
 | Fernflower hangs on a method | Use `-mpm=60` to set a 60-second timeout per method |
 | Fernflower JAR not found | Set `FERNFLOWER_JAR_PATH` env variable to the full path of the JAR |
-| dex2jar fails with `ZipException` | The APK may have a non-standard ZIP structure — try `jadx` instead |
+| dex2jar fails with `ZipException` | The APK may have a non-standard ZIP structure — try `jadx` or `asc` instead |
+| Need to inspect a single class quickly | Use ASC single-class mode: `decompile.sh --engine asc -c <ClassName> app.apk` |

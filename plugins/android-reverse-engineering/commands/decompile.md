@@ -51,6 +51,18 @@ Run the decompile script on the target file. Choose the engine based on the inpu
   bash ${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/decompile.sh <file>
   ```
 
+- **Large APK (>50MB) or memory-constrained** → use ASC (Android Source Code) for ultra-fast, zero-overhead decompilation:
+
+  ```bash
+  bash ${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/decompile.sh --engine asc <file>
+  ```
+
+- **Target a specific class only** → extract and decompile in ~180ms:
+
+  ```bash
+  bash ${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/decompile.sh --engine asc --class <ClassName> <file>
+  ```
+
 - **JAR/AAR** and Fernflower is available → prefer fernflower for better Java output:
 
   ```bash

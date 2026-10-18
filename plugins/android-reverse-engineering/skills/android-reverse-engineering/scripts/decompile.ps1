@@ -2,6 +2,8 @@
 param(
     [Alias('o')]
     [string]$Output,
+    [Alias('c')]
+    [string]$Class,
     [switch]$Deobf,
     [switch]$NoRes,
     [string]$Engine = 'jadx',
@@ -34,15 +36,18 @@ Arguments:
 
 Options:
   -Output DIR       Output directory (default: <filename>-decompiled)
+  -Class CLASS      Target a specific class to decompile (fast single-class mode)
   -Deobf            Enable deobfuscation of names
   -NoRes            Skip resource decoding (faster, code-only)
-  -Engine ENGINE    Decompiler engine: jadx, fernflower, or both (default: jadx)
+  -Engine ENGINE    Decompiler engine: jadx, fernflower, asc, or both (default: jadx)
   -Help             Show this help message
 
 Engines:
   jadx        Use jadx (default). Handles APK/JAR/AAR natively, decodes resources.
   fernflower  Use Fernflower/Vineflower. Better on complex Java, lambdas, generics.
               For APK files, requires dex2jar as intermediate step.
+  asc         Use ASC (Android Source Code - droidasc/rust_ASC). Ultra-fast on-demand
+              decompilation with instant DEX querying. Ideal for AI agents & large APKs.
   both        Run both decompilers side by side for comparison.
               jadx output  -> <output>/jadx/
               fernflower   -> <output>/fernflower/
@@ -52,6 +57,8 @@ Environment:
 
 Examples:
   .\decompile.ps1 app-release.apk
+  .\decompile.ps1 -Engine asc app-release.apk
+  .\decompile.ps1 -Engine asc -Class com.example.MainActivity app-release.apk
   .\decompile.ps1 app-bundle.xapk
   .\decompile.ps1 -Engine both -Deobf app-release.apk
   .\decompile.ps1 -Engine fernflower library.jar
@@ -78,8 +85,8 @@ if ($extLower -notin @('apk', 'xapk', 'jar', 'aar')) {
     exit 1
 }
 
-if ($Engine -notin @('jadx', 'fernflower', 'both')) {
-    Write-Host "Error: Unknown engine '$Engine'. Use jadx, fernflower, or both." -ForegroundColor Red
+if ($Engine -notin @('jadx', 'fernflower', 'asc', 'both')) {
+    Write-Host "Error: Unknown engine '$Engine'. Use jadx, fernflower, asc, or both." -ForegroundColor Red
     exit 1
 }
 
@@ -241,6 +248,130 @@ function Invoke-Fernflower {
     return $true
 }
 
+# --- Locate ASC ---
+function Find-Asc {
+    $cmd = Get-Command droidasc -ErrorAction SilentlyContinue
+    if ($cmd) { return 'droidasc' }
+    $cmd = Get-Command rust_ASC -ErrorAction SilentlyContinue
+    if ($cmd) { return 'rust_ASC' }
+    $cmd = Get-Command rust_ASC.exe -ErrorAction SilentlyContinue
+    if ($cmd) { return 'rust_ASC.exe' }
+    try {
+        $pyHelp = & python -m droidasc --help 2>&1 | Select-Object -First 1
+        if ($pyHelp -match 'ASC|droidasc') { return 'python -m droidasc' }
+    } catch {}
+    return $null
+}
+
+# --- ASC decompilation ---
+function Invoke-Asc {
+    param([string]$OutDir, [string]$FileAbs, [string]$FileExt)
+
+    $ascCmd = Find-Asc
+    if (-not $ascCmd) {
+        Write-Host "Error: ASC (droidasc or rust_ASC) is not installed or not in PATH." -ForegroundColor Red
+        Write-Host "Run 'install-dep.ps1 asc' or 'pip install droidasc' to install." -ForegroundColor Yellow
+        return $false
+    }
+
+    if ($FileExt -notin @('apk', 'dex')) {
+        Write-Host "Error: ASC decompiler engine operates on .apk or .dex files directly." -ForegroundColor Red
+        return $false
+    }
+
+    New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
+    $resDir = Join-Path $OutDir 'resources'
+    $srcDir = Join-Path $OutDir 'sources'
+    New-Item -ItemType Directory -Path $resDir -Force | Out-Null
+    New-Item -ItemType Directory -Path $srcDir -Force | Out-Null
+
+    Write-Host "Running: ASC ($ascCmd) on $FileAbs"
+
+    # Fast-path: Target a specific class if requested
+    if ($Class) {
+        Write-Host "Decompiling target class '$Class' with ASC..."
+        $clean = $Class.TrimStart('L').TrimEnd(';').Replace('.', '/')
+        $outFile = Join-Path $srcDir "$($clean -replace '/', '\').java"
+        $parent = [IO.Path]::GetDirectoryName($outFile)
+        if (-not (Test-Path $parent)) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
+        if ($ascCmd -eq 'python -m droidasc') {
+            & python -m droidasc getclass $FileAbs $Class -o $outFile
+        } else {
+            & $ascCmd getclass $FileAbs $Class -o $outFile
+        }
+        if (Test-Path $outFile) {
+            Write-Host "Class decompiled to: $outFile"
+            return $true
+        } else {
+            Write-Host "Error: ASC failed to decompile class '$Class'." -ForegroundColor Red
+            return $false
+        }
+    }
+
+    # 1. Decode AndroidManifest.xml
+    $manifestOut = Join-Path $resDir 'AndroidManifest.xml'
+    Write-Host "Extracting AndroidManifest.xml..."
+    try {
+        if ($ascCmd -eq 'python -m droidasc') {
+            & python -m droidasc getmanifest $FileAbs -o $manifestOut 2>$null
+        } else {
+            & $ascCmd getmanifest $FileAbs -o $manifestOut 2>$null
+        }
+    } catch {}
+
+    # 2. Enumerate classes across DEX entries
+    $classesOut = Join-Path $OutDir 'classes.txt'
+    Write-Host "Enumerating classes across DEX entries..."
+    try {
+        if ($ascCmd -eq 'python -m droidasc') {
+            & python -m droidasc listclass $FileAbs -o $classesOut 2>$null
+        } else {
+            & $ascCmd listclass $FileAbs -o $classesOut 2>$null
+        }
+    } catch {}
+
+    # 3. Export sources
+    $exported = $false
+    if ($ascCmd -like '*rust_ASC*') {
+        try {
+            Write-Host "Exporting sources with rust_ASC..."
+            & $ascCmd export --thread 8 $FileAbs $srcDir 2>$null
+            if ($LASTEXITCODE -eq 0 -and (Test-Path $srcDir)) {
+                $exported = $true
+            }
+        } catch {}
+    }
+
+    if (-not $exported) {
+        Write-Host "Decompiling application classes into $srcDir\..."
+        $classes = @()
+        if (Test-Path $classesOut) {
+            $classes = Get-Content $classesOut | Where-Object { $_ -and -not $_.StartsWith('Landroid/') -and -not $_.StartsWith('Landroidx/') -and -not $_.StartsWith('Lkotlin/') -and -not $_.StartsWith('Ljava/') }
+        }
+
+        $targetCount = [Math]::Min($classes.Count, 500)
+        for ($i = 0; $i -lt $targetCount; $i++) {
+            $c = $classes[$i].Trim()
+            if (-not $c) { continue }
+            $cleanName = $c.TrimStart('L').TrimEnd(';')
+            $classFile = Join-Path $srcDir "$($cleanName -replace '/', '\').java"
+            $parentDir = [IO.Path]::GetDirectoryName($classFile)
+            if (-not (Test-Path $parentDir)) { New-Item -ItemType Directory -Path $parentDir -Force | Out-Null }
+            if ($ascCmd -eq 'python -m droidasc') {
+                & python -m droidasc getclass $FileAbs $c -o $classFile 2>$null
+            } else {
+                & $ascCmd getclass $FileAbs $c -o $classFile 2>$null
+            }
+        }
+    }
+
+    $count = (Get-ChildItem -Path $srcDir -Recurse -Filter '*.java' -File -ErrorAction SilentlyContinue).Count
+    Write-Host "ASC output: $srcDir\"
+    Write-Host "Java files decompiled by ASC: $count"
+
+    return ($count -gt 0 -or (Test-Path $manifestOut))
+}
+
 # --- Summary helper ---
 function Show-Structure {
     param([string]$SrcDir, [string]$Label)
@@ -272,6 +403,10 @@ function Invoke-DecompileSingle {
         'fernflower' {
             Invoke-Fernflower -OutDir $OutDir -FileAbs $FileAbs -FileExt $fileExt
             Show-Structure (Join-Path $OutDir 'sources') 'fernflower'
+        }
+        'asc' {
+            Invoke-Asc -OutDir $OutDir -FileAbs $FileAbs -FileExt $fileExt
+            Show-Structure (Join-Path $OutDir 'sources') 'asc'
         }
         'both' {
             Write-Host "--- Pass 1: jadx ---"

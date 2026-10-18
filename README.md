@@ -25,7 +25,7 @@ A Claude Code skill that decompiles Android APK/XAPK/JAR/AAR files and **extract
 | Capability | Description |
 |------------|-------------|
 | **Fingerprint first (Phase 0)** | Triage an APK/XAPK in seconds — detect the framework (Flutter / React Native / Cordova / Xamarin / native-Kotlin), HTTP stack, obfuscation level and native libs *before* spending time on a full decompile |
-| **Decompile** | APK, XAPK, JAR, and AAR files using jadx and Fernflower/Vineflower (single engine or side-by-side comparison) |
+| **Decompile** | APK, XAPK, JAR, and AAR files using jadx, Fernflower/Vineflower, and ASC (single engine, side-by-side comparison, or instant single-class extraction) |
 | **Recover Kotlin names** | Rebuild original `*Repository` / `*ViewModel` / `*UseCase` class names from R8-obfuscated binaries using Kotlin metadata that R8 cannot strip |
 | **Extract APIs** | Retrofit, OkHttp, Volley **and modern Kotlin/KMP stacks: Ktor, Apollo (GraphQL), Koin DI** — endpoints, hardcoded URLs, auth headers, tokens and HMAC request-signing schemes |
 | **Trace call flows** | From Activities/Fragments through ViewModels and repositories down to HTTP calls |
@@ -41,6 +41,7 @@ A Claude Code skill that decompiles Android APK/XAPK/JAR/AAR files and **extract
 
 **Optional (recommended):**
 
+- [ASC (Android Source Code)](https://github.com/MG1937/ASC) / [`rust_ASC`](https://github.com/MG1937/rust_ASC) — ultra-fast on-demand memory-mapped DEX querying and decompiler for large APKs (`pip install droidasc`)
 - [Vineflower](https://github.com/Vineflower/vineflower) or [Fernflower](https://github.com/JetBrains/fernflower) — better output on complex Java code
 - [dex2jar](https://github.com/ThexXTURBOXx/dex2jar) — needed to use Fernflower on APK/DEX files
 
@@ -120,6 +121,16 @@ bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scri
 # Run both engines and compare
 bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/decompile.sh --engine both --deobf app.apk
 
+# Ultra-fast decompilation with ASC (ideal for large APKs and memory-constrained environments)
+bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/decompile.sh --engine asc app.apk
+
+# Instant single-class decompilation in ~180ms
+bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/decompile.sh --engine asc --class com.example.MainActivity app.apk
+
+# Fast on-demand queries without full decompile (manifest, class list, string xrefs)
+bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/asc-query.sh app.apk getmanifest
+bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/asc-query.sh app.apk findrefs string "https://"
+
 # Find API calls — defaults to a full scan across every supported stack
 bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/find-api-calls.sh output/sources/
 bash plugins/android-reverse-engineering/skills/android-reverse-engineering/scripts/find-api-calls.sh output/sources/ --retrofit
@@ -172,6 +183,7 @@ android-reverse-engineering-skill/
 │       │       │   ├── jadx-usage.md
 │       │       │   ├── fernflower-usage.md
 │       │       │   ├── api-extraction-patterns.md
+│       │       │   ├── asc-usage.md            # ASC decompiler CLI guide
 │       │       │   ├── kotlin-name-recovery.md
 │       │       │   ├── third_party_hosts.txt   # denylist for first/third-party bucketing
 │       │       │   └── call-flow-analysis.md
@@ -182,6 +194,8 @@ android-reverse-engineering-skill/
 │       │           ├── install-dep.ps1
 │       │           ├── decompile.sh
 │       │           ├── decompile.ps1
+│       │           ├── asc-query.sh        # on-demand queries via ASC
+│       │           ├── asc-query.ps1
 │       │           ├── fingerprint.sh          # Phase 0 — pre-decompile triage
 │       │           ├── recover-kotlin-names.sh # R8 → real Kotlin class names
 │       │           ├── lookup-name.sh          # query the recovered name map
@@ -196,6 +210,7 @@ android-reverse-engineering-skill/
 ## References
 
 - [jadx — Dex to Java decompiler](https://github.com/skylot/jadx)
+- [ASC (Android Source Code) — Droid ASC and rust_ASC](https://github.com/MG1937/ASC)
 - [Fernflower — JetBrains analytical decompiler](https://github.com/JetBrains/fernflower)
 - [Vineflower — Fernflower community fork](https://github.com/Vineflower/vineflower)
 - [dex2jar — DEX to JAR converter](https://github.com/ThexXTURBOXx/dex2jar)

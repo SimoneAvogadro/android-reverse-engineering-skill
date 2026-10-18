@@ -12,17 +12,20 @@ Arguments:
   <file>            Path to the .apk, .xapk, .jar, or .aar file
 
 Options:
-  -o, --output DIR  Output directory (default: <filename>-decompiled)
-  --deobf           Enable deobfuscation of names
-  --no-res          Skip resource decoding (faster, code-only)
-  --engine ENGINE   Decompiler engine: jadx, fernflower, or both (default: jadx)
-  -h, --help        Show this help message
+  -o, --output DIR   Output directory (default: <filename>-decompiled)
+  -c, --class CLASS  Target a specific class to decompile (fast single-class mode)
+  --deobf            Enable deobfuscation of names
+  --no-res           Skip resource decoding (faster, code-only)
+  --engine ENGINE    Decompiler engine: jadx, fernflower, asc, or both (default: jadx)
+  -h, --help         Show this help message
 
 Engines:
   jadx        Use jadx (default). Handles APK/JAR/AAR natively, decodes resources.
   fernflower  Use Fernflower/Vineflower. Better on complex Java, lambdas, generics.
               For APK files, requires dex2jar as intermediate step.
-  both        Run both decompilers side by side for comparison.
+  asc         Use ASC (Android Source Code - droidasc/rust_ASC). Ultra-fast on-demand
+              decompilation with instant DEX querying. Ideal for AI agents & large APKs.
+  both        Run both jadx and fernflower side by side for comparison.
               jadx output  → <output>/jadx/
               fernflower   → <output>/fernflower/
 
@@ -31,6 +34,8 @@ Environment:
 
 Examples:
   decompile.sh app-release.apk
+  decompile.sh --engine asc app-release.apk
+  decompile.sh --engine asc --class com.example.MainActivity app-release.apk
   decompile.sh app-bundle.xapk
   decompile.sh --engine both --deobf app-release.apk
   decompile.sh --engine fernflower library.jar
@@ -43,11 +48,13 @@ OUTPUT_DIR=""
 DEOBF=false
 NO_RES=false
 ENGINE="jadx"
+TARGET_CLASS=""
 INPUT_FILE=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -o|--output)   OUTPUT_DIR="$2"; shift 2 ;;
+    -c|--class)    TARGET_CLASS="$2"; shift 2 ;;
     --deobf)       DEOBF=true; shift ;;
     --no-res)      NO_RES=true; shift ;;
     --engine)      ENGINE="$2"; shift 2 ;;
@@ -79,9 +86,9 @@ case "$ext_lower" in
 esac
 
 case "$ENGINE" in
-  jadx|fernflower|both) ;;
+  jadx|fernflower|asc|both) ;;
   *)
-    echo "Error: Unknown engine '$ENGINE'. Use jadx, fernflower, or both." >&2
+    echo "Error: Unknown engine '$ENGINE'. Use jadx, fernflower, asc, or both." >&2
     exit 1
     ;;
 esac
@@ -343,6 +350,119 @@ run_fernflower() {
   return 1
 }
 
+# --- Locate ASC ---
+find_asc() {
+  if command -v droidasc &>/dev/null; then
+    echo "droidasc"
+  elif command -v rust_ASC &>/dev/null; then
+    echo "rust_ASC"
+  elif python3 -m droidasc --help &>/dev/null; then
+    echo "python3 -m droidasc"
+  elif python -m droidasc --help &>/dev/null; then
+    echo "python -m droidasc"
+  else
+    return 1
+  fi
+}
+
+# --- ASC decompilation ---
+run_asc() {
+  local out_dir="$1"
+  local asc_cmd
+  if ! asc_cmd=$(find_asc); then
+    echo "Error: ASC (droidasc or rust_ASC) is not installed or not in PATH." >&2
+    echo "Run install-dep.sh asc or pip install droidasc." >&2
+    return 1
+  fi
+
+  if [[ "$ext_lower" != "apk" && "$ext_lower" != "dex" ]]; then
+    echo "Error: ASC decompiler engine operates on .apk or .dex files directly." >&2
+    return 1
+  fi
+
+  local res_dir="$out_dir/resources"
+  local src_dir="$out_dir/sources"
+  mkdir -p "$res_dir" "$src_dir"
+
+  echo "Running: ASC ($asc_cmd) on $INPUT_FILE_ABS"
+
+  # Fast-path: Target a specific class if requested
+  if [[ -n "$TARGET_CLASS" ]]; then
+    echo "Decompiling target class '$TARGET_CLASS' with ASC..."
+    local clean="${TARGET_CLASS#L}"
+    clean="${clean%;}"
+    clean="${clean//.//}"
+    local out_file="$src_dir/${clean}.java"
+    mkdir -p "$(dirname "$out_file")"
+    $asc_cmd getclass "$INPUT_FILE_ABS" "$TARGET_CLASS" -o "$out_file"
+    if [[ -f "$out_file" ]]; then
+      echo "Class decompiled to: $out_file"
+      return 0
+    else
+      echo "Error: ASC failed to decompile class '$TARGET_CLASS'." >&2
+      return 1
+    fi
+  fi
+
+  # 1. Decode AndroidManifest.xml
+  echo "Extracting AndroidManifest.xml..."
+  $asc_cmd getmanifest "$INPUT_FILE_ABS" -o "$res_dir/AndroidManifest.xml" 2>/dev/null || true
+
+  # 2. Enumerate classes across all DEX files
+  local classes_file="$out_dir/classes.txt"
+  echo "Enumerating classes across DEX entries..."
+  $asc_cmd listclass "$INPUT_FILE_ABS" -o "$classes_file" 2>/dev/null || true
+
+  # 3. Export sources
+  local count=0
+  if [[ "$asc_cmd" == *"rust_ASC"* ]]; then
+    echo "Exporting sources with rust_ASC..."
+    $asc_cmd export --thread 8 "$INPUT_FILE_ABS" "$src_dir" 2>/dev/null || true
+  fi
+
+  # Fallback to extracting application classes using python/droidasc
+  if [[ -f "$classes_file" ]]; then
+    count=$(find "$src_dir" -name "*.java" 2>/dev/null | wc -l)
+    if [[ $count -eq 0 ]]; then
+      local py_bin="python3"
+      if ! command -v python3 &>/dev/null && command -v python &>/dev/null; then
+        py_bin="python"
+      fi
+      "$py_bin" - "$INPUT_FILE_ABS" "$classes_file" "$src_dir" 2>/dev/null <<'PY' || true
+import sys, os, subprocess
+apk, cls_file, out = sys.argv[1], sys.argv[2], sys.argv[3]
+try:
+    with open(cls_file, 'r', encoding='utf-8', errors='ignore') as f:
+        lines = [line.strip() for line in f if line.strip()]
+except Exception:
+    lines = []
+
+# Exclude standard framework namespaces to prioritize app code
+app_classes = [c for c in lines if not any(c.startswith(p) for p in ('Landroid/', 'Landroidx/', 'Lkotlin/', 'Ljava/', 'Lorg/intellij/'))]
+targets = app_classes[:500] if len(app_classes) > 500 else app_classes
+
+for c in targets:
+    clean = c.lstrip('L').rstrip(';')
+    out_path = os.path.join(out, clean.replace('/', os.sep) + '.java')
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    subprocess.run([sys.executable, "-m", "droidasc", "getclass", apk, c, "-o", out_path],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+PY
+    fi
+  fi
+
+  count=$(find "$src_dir" -name "*.java" 2>/dev/null | wc -l)
+  echo "ASC output: $src_dir/"
+  echo "Java files decompiled by ASC: $count"
+
+  if [[ $count -gt 0 || -f "$res_dir/AndroidManifest.xml" ]]; then
+    return 0
+  fi
+
+  echo "Error: ASC produced no Java output." >&2
+  return 1
+}
+
 # --- Summary helper ---
 print_structure() {
   local src_dir="$1"
@@ -419,6 +539,18 @@ decompile_single() {
       fi
       if [[ $ff_status -eq 2 ]]; then
         echo "Fernflower completed with warnings but produced usable output."
+      fi
+      ;;
+    asc)
+      local asc_status=0
+      if run_asc "$out_dir"; then
+        asc_status=0
+      else
+        asc_status=$?
+      fi
+      print_structure "$out_dir/sources" "asc"
+      if [[ $asc_status -ne 0 ]]; then
+        return 1
       fi
       ;;
     both)

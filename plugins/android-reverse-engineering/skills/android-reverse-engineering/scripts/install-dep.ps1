@@ -26,6 +26,7 @@ Available dependencies:
   dex2jar      DEX to JAR converter
   apktool      Android resource decoder
   adb          Android Debug Bridge
+  asc          ASC (Android Source Code) decompiler (pip install droidasc)
 
 The script detects available package managers (winget, scoop, choco), then:
   - Installs using the first available manager
@@ -325,6 +326,40 @@ function Install-Adb {
     }
 }
 
+function Install-Asc {
+    if (Get-Command droidasc -ErrorAction SilentlyContinue) {
+        Write-Ok "droidasc already installed"
+        return
+    }
+    if (Get-Command rust_ASC -ErrorAction SilentlyContinue) {
+        Write-Ok "rust_ASC already installed"
+        return
+    }
+
+    Write-Info "Installing ASC (droidasc) via pip..."
+    $pipCmd = Get-Command pip -ErrorAction SilentlyContinue
+    if (-not $pipCmd) {
+        $pipCmd = Get-Command pip3 -ErrorAction SilentlyContinue
+    }
+
+    if ($pipCmd) {
+        & $pipCmd.Name install --upgrade droidasc
+    } else {
+        $pyCmd = Get-Command python -ErrorAction SilentlyContinue
+        if ($pyCmd) {
+            & $pyCmd.Name -m pip install --upgrade droidasc
+        } else {
+            Write-Manual "Python and pip are required to install droidasc. Run: pip install droidasc or download rust_ASC from https://github.com/MG1937/rust_ASC"
+        }
+    }
+
+    if ((Get-Command droidasc -ErrorAction SilentlyContinue) -or (Get-Command rust_ASC -ErrorAction SilentlyContinue)) {
+        Write-Ok "ASC installed successfully"
+    } else {
+        Write-Info "droidasc installed via pip. Ensure your Python Scripts directory is in your PATH."
+    }
+}
+
 # =====================================================================
 # Dispatch
 # =====================================================================
@@ -337,9 +372,11 @@ switch ($Dep) {
     'dex2jar'     { Install-Dex2Jar }
     'apktool'     { Install-Apktool }
     'adb'         { Install-Adb }
+    'asc'         { Install-Asc }
+    'droidasc'    { Install-Asc }
     default {
         Write-Host "Error: Unknown dependency '$Dep'" -ForegroundColor Red
-        Write-Host "Available: java, jadx, vineflower, dex2jar, apktool, adb"
+        Write-Host "Available: java, jadx, vineflower, dex2jar, apktool, adb, asc"
         exit 1
     }
 }
