@@ -22,6 +22,7 @@ Engines:
   jadx        Use jadx (default). Handles APK/JAR/AAR natively, decodes resources.
   fernflower  Use Fernflower/Vineflower. Better on complex Java, lambdas, generics.
               For APK files, requires dex2jar as intermediate step.
+              For AAR files, extracts classes.jar directly (no dex2jar needed).
   both        Run both decompilers side by side for comparison.
               jadx output  → <output>/jadx/
               fernflower   → <output>/fernflower/
@@ -209,6 +210,7 @@ run_fernflower() {
   local out_dir="$1"
   local jar_to_decompile=""
   local converted_jar=""
+  local extracted_jar=""
   local intermediate_dir="$out_dir/intermediate"
   local ff_status=0
   local d2j_status=0
@@ -224,8 +226,18 @@ run_fernflower() {
 
   mkdir -p "$out_dir"
 
-  # For APK/AAR, we need dex2jar first to convert DEX→JAR
-  if [[ "$ext_lower" == "apk" || "$ext_lower" == "aar" ]]; then
+  # An AAR contains JVM bytecode in classes.jar; only APKs need DEX conversion.
+  if [[ "$ext_lower" == "aar" ]]; then
+    mkdir -p "$intermediate_dir"
+    extracted_jar="$intermediate_dir/classes.jar"
+    if ! unzip -p "$INPUT_FILE_ABS" classes.jar > "$extracted_jar"; then
+      rm -f "$extracted_jar"
+      rmdir "$intermediate_dir" 2>/dev/null || true
+      echo "Error: Could not extract classes.jar from AAR $INPUT_FILE_ABS; this engine requires its primary classes.jar." >&2
+      return 1
+    fi
+    jar_to_decompile="$extracted_jar"
+  elif [[ "$ext_lower" == "apk" ]]; then
     local d2j
     if ! d2j=$(find_dex2jar); then
       echo "Error: dex2jar is required to use Fernflower on .$ext_lower files." >&2
@@ -311,12 +323,15 @@ run_fernflower() {
     fi
   fi
 
-  # Clean up intermediate dex2jar output
+  # Clean up intermediate bytecode once usable sources are available.
   if [[ $count -gt 0 ]]; then
     echo "Fernflower output: $sources_dir/"
     echo "Java files decompiled by Fernflower: $count"
     if [[ -n "${converted_jar:-}" ]] && [[ -f "${converted_jar:-}" ]]; then
       rm -f "$converted_jar"
+    fi
+    if [[ -n "$extracted_jar" ]] && [[ -f "$extracted_jar" ]]; then
+      rm -f "$extracted_jar"
     fi
     if [[ -d "$intermediate_dir" ]]; then
       rmdir "$intermediate_dir" 2>/dev/null || true
@@ -328,6 +343,9 @@ run_fernflower() {
     return 0
   fi
 
+  if [[ -n "$extracted_jar" ]] && [[ -f "$extracted_jar" ]]; then
+    echo "Extracted AAR classes.jar kept at $extracted_jar for diagnosis." >&2
+  fi
   if [[ -n "${converted_jar:-}" ]] && [[ -f "${converted_jar:-}" ]]; then
     echo "Error: Fernflower/Vineflower produced no Java output. Intermediate dex2jar artifact kept at $converted_jar" >&2
   else
