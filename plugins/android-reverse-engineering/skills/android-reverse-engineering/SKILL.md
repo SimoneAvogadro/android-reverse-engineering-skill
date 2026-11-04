@@ -106,7 +106,7 @@ On Windows (PowerShell):
 & "${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/decompile.ps1" [OPTIONS] <file>
 ```
 
-For **XAPK** files (ZIP bundles containing multiple APKs, used by APKPure and similar stores): the script automatically extracts the archive, identifies all APK files inside (base + split APKs), and decompiles each one into a separate subdirectory. The XAPK manifest is copied to the output for reference.
+For **XAPK/APKS/APKM** files (ZIP bundles containing multiple APKs): the Bash script automatically extracts the archive, identifies all APK files inside (base + split APKs), and decompiles each one into a separate subdirectory. If the archive contains `manifest.json`, it is copied to `xapk-manifest.json` for reference. Other bundle metadata is not required. APKS/APKM support here applies to Bash, not the experimental PowerShell script.
 
 **Split/bundled APK detection**: Some APKs are actually bundle wrappers — the outer APK contains `base.apk` plus `split_config.*.apk` files inside its resources directory. When this happens, jadx will decompile the thin wrapper and produce very few Java files. The decompile scripts automatically detect this (≤10 Java files + inner APKs present) and re-decompile `base.apk` into an `<output>/base/` subdirectory. Config-only splits (ABI, language, density) are skipped. The main decompiled source will be in `<output>/base/sources/`.
 
