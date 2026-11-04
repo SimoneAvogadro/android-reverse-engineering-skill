@@ -1,9 +1,9 @@
 ---
 allowed-tools: Bash(bash ${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/check-deps.sh), Bash(bash ${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/decompile.sh *), Read, Glob, Grep
-description: Decompile an Android APK/XAPK/JAR/AAR and analyze its structure
+description: Decompile an Android APK/XAPK/APKS/APKM/JAR/AAR and analyze its structure
 user-invocable: true
-argument-hint: <path to APK, XAPK, JAR, or AAR file>
-argument: path to APK, XAPK, JAR, or AAR file (optional)
+argument-hint: <path to APK, XAPK, APKS, APKM, JAR, or AAR file>
+argument: path to APK, XAPK, APKS, APKM, JAR, or AAR file (optional)
 ---
 
 # /decompile
@@ -16,7 +16,7 @@ You are starting the Android reverse engineering workflow. Follow these steps:
 
 ### Step 1: Get the target file
 
-If the user provided a file path as an argument, use that. Otherwise, ask the user for the path to the APK, XAPK, JAR, or AAR file they want to decompile.
+If the user provided a file path as an argument, use that. Otherwise, ask the user for the path to the APK, XAPK, APKS, APKM, JAR, or AAR file they want to decompile.
 
 ### Step 2: Check and install dependencies
 
@@ -45,7 +45,7 @@ After any installations, re-run `check-deps.sh` to verify. Do not proceed until 
 
 Run the decompile script on the target file. Choose the engine based on the input:
 
-- **APK or XAPK** → use jadx first (handles resources natively; XAPK is auto-extracted):
+- **APK or XAPK/APKS/APKM bundle** → use jadx first (handles resources natively; bundles are auto-extracted by the Bash script):
 
   ```bash
   bash ${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/decompile.sh <file>
@@ -73,8 +73,8 @@ bash ${CLAUDE_PLUGIN_ROOT}/skills/android-reverse-engineering/scripts/decompile.
 
 After decompilation completes:
 
-1. Read `AndroidManifest.xml` from the resources directory. For XAPK, check the base APK's output first.
-2. If XAPK, review `xapk-manifest.json` in the output directory to understand the split structure.
+1. Read `AndroidManifest.xml` from the resources directory. For XAPK/APKS/APKM, check the base APK's output first; each contained APK has its own output subdirectory.
+2. If the bundle contains `manifest.json`, review its preserved copy, `xapk-manifest.json`, in the output directory. APKS/APKM metadata differs by producer and may not include this file.
 3. List the top-level package structure
 4. Identify the app's main Activity, Application class, and architecture pattern
 5. Report a summary to the user

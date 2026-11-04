@@ -32,6 +32,8 @@ A Claude Code skill that decompiles Android APK/XAPK/JAR/AAR files and **extract
 | **Analyze structure** | Manifest, packages, architecture patterns |
 | **Handle obfuscation** | R8-resistant path/URL extraction plus strategies for navigating ProGuard/R8 output |
 
+The Bash decompiler also accepts `.apks` and `.apkm` ZIP bundles, matching the fingerprint script. Each contained APK is decompiled into its own subdirectory, just like XAPK. This does not add APKS/APKM support to the experimental PowerShell script.
+
 ## Requirements
 
 **Required:**

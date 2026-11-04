@@ -6,10 +6,10 @@ usage() {
   cat <<EOF
 Usage: decompile.sh [OPTIONS] <file>
 
-Decompile an Android APK, XAPK, JAR, or AAR file.
+Decompile an Android APK, XAPK/APKS/APKM bundle, JAR, or AAR file.
 
 Arguments:
-  <file>            Path to the .apk, .xapk, .jar, or .aar file
+  <file>            Path to the .apk, .xapk, .apks, .apkm, .jar, or .aar file
 
 Options:
   -o, --output DIR  Output directory (default: <filename>-decompiled)
@@ -32,6 +32,8 @@ Environment:
 Examples:
   decompile.sh app-release.apk
   decompile.sh app-bundle.xapk
+  decompile.sh app-bundle.apks
+  decompile.sh app-bundle.apkm
   decompile.sh --engine both --deobf app-release.apk
   decompile.sh --engine fernflower library.jar
 EOF
@@ -71,9 +73,9 @@ fi
 ext="${INPUT_FILE##*.}"
 ext_lower=$(echo "$ext" | tr '[:upper:]' '[:lower:]')
 case "$ext_lower" in
-  apk|xapk|jar|aar) ;;
+  apk|xapk|apks|apkm|jar|aar) ;;
   *)
-    echo "Error: Unsupported file type '.$ext'. Expected .apk, .xapk, .jar, or .aar" >&2
+    echo "Error: Unsupported file type '.$ext'. Expected .apk, .xapk, .apks, .apkm, .jar, or .aar" >&2
     exit 1
     ;;
 esac
@@ -93,20 +95,25 @@ if [[ -z "$OUTPUT_DIR" ]]; then
   OUTPUT_DIR="${BASENAME}-decompiled"
 fi
 
-# --- XAPK handling ---
-# XAPK is a ZIP containing one or more APKs, optional OBB files, and a manifest.json.
+# --- APK bundle handling ---
+# XAPK/APKS/APKM are ZIPs containing APKs and optional metadata or OBB files.
 # We extract it, find all APKs inside, and decompile each one.
 XAPK_EXTRACTED_DIR=""
 XAPK_APK_FILES=()
+IS_APK_BUNDLE=false
+case "$ext_lower" in
+  xapk|apks|apkm) IS_APK_BUNDLE=true ;;
+esac
 
-if [[ "$ext_lower" == "xapk" ]]; then
+if [[ "$IS_APK_BUNDLE" == true ]]; then
+  BUNDLE_FORMAT=$(echo "$ext_lower" | tr '[:lower:]' '[:upper:]')
   XAPK_EXTRACTED_DIR=$(mktemp -d "${TMPDIR:-/tmp}/xapk-extract-XXXXXX")
-  echo "=== Extracting XAPK archive ==="
+  echo "=== Extracting $BUNDLE_FORMAT archive ==="
   unzip -qo "$INPUT_FILE_ABS" -d "$XAPK_EXTRACTED_DIR"
 
   # Show manifest.json if present
   if [[ -f "$XAPK_EXTRACTED_DIR/manifest.json" ]]; then
-    echo "XAPK manifest found:"
+    echo "$BUNDLE_FORMAT manifest found:"
     cat "$XAPK_EXTRACTED_DIR/manifest.json"
     echo
   fi
@@ -117,12 +124,12 @@ if [[ "$ext_lower" == "xapk" ]]; then
   done < <(find "$XAPK_EXTRACTED_DIR" -name "*.apk" -print0 | sort -z)
 
   if [[ ${#XAPK_APK_FILES[@]} -eq 0 ]]; then
-    echo "Error: No APK files found inside XAPK archive." >&2
+    echo "Error: No APK files found inside $BUNDLE_FORMAT archive." >&2
     rm -rf "$XAPK_EXTRACTED_DIR"
     exit 1
   fi
 
-  echo "Found ${#XAPK_APK_FILES[@]} APK(s) inside XAPK:"
+  echo "Found ${#XAPK_APK_FILES[@]} APK(s) inside $BUNDLE_FORMAT:"
   for f in "${XAPK_APK_FILES[@]}"; do
     echo "  - $(basename "$f")"
   done
@@ -490,8 +497,8 @@ echo "=== Decompiling $INPUT_FILE (engine: $ENGINE) ==="
 echo "Output directory: $OUTPUT_DIR"
 echo
 
-if [[ "$ext_lower" == "xapk" ]]; then
-  # Decompile each APK found inside the XAPK
+if [[ "$IS_APK_BUNDLE" == true ]]; then
+  # Decompile each APK found inside the bundle.
   mkdir -p "$OUTPUT_DIR"
 
   # Copy XAPK manifest for reference
@@ -523,7 +530,7 @@ if [[ "$ext_lower" == "xapk" ]]; then
   rm -rf "$XAPK_EXTRACTED_DIR"
 
   echo
-  echo "=== XAPK decompilation complete ==="
+  echo "=== $BUNDLE_FORMAT decompilation complete ==="
   echo "Subdirectories in $OUTPUT_DIR/:"
   ls -1 "$OUTPUT_DIR/"
 else
