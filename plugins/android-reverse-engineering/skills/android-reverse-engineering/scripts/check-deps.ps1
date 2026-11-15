@@ -12,6 +12,16 @@ if ($userPath) {
     }
 }
 
+# Run a native command and capture stdout+stderr as plain strings.
+# Windows PowerShell 5.1 wraps each redirected stderr line in an ErrorRecord;
+# with $ErrorActionPreference = 'Stop' that aborts the script (e.g. `java -version`
+# writes to stderr). Relax the preference locally and convert records to text.
+function Invoke-NativeOutput {
+    param([string]$Command, [string[]]$Arguments)
+    $ErrorActionPreference = 'Continue'
+    & $Command @Arguments 2>&1 | ForEach-Object { "$_" }
+}
+
 $REQUIRED_JAVA_MAJOR = 17
 $errors = 0
 $missingRequired = @()
@@ -24,7 +34,7 @@ Write-Host ""
 $javaOk = $false
 $javaBin = Get-Command java -ErrorAction SilentlyContinue
 if ($javaBin) {
-    $javaVersionOutput = & java -version 2>&1 | Select-Object -First 1
+    $javaVersionOutput = Invoke-NativeOutput 'java' @('-version') | Select-Object -First 1
     $javaVersionStr = "$javaVersionOutput"
     if ($javaVersionStr -match '"(\d+)') {
         $javaVersion = [int]$Matches[1]
@@ -69,7 +79,8 @@ if (-not $jadxBin) {
 if ($jadxBin) {
     try {
         $jadxCmd = if ($jadxBin -is [string]) { $jadxBin } else { 'jadx' }
-        $jadxVersion = & $jadxCmd --version 2>$null
+        $jadxVersion = Invoke-NativeOutput $jadxCmd @('--version') |
+            Where-Object { $_ -match '^\s*\d+\.\d+' } | Select-Object -First 1
         Write-Host "[OK] jadx $jadxVersion detected"
     } catch {
         Write-Host "[OK] jadx detected"
