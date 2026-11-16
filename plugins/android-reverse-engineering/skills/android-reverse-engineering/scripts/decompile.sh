@@ -277,7 +277,7 @@ run_fernflower() {
     ff_status=$?
   fi
 
-  # Fernflower outputs a JAR containing .java files — extract it
+  # Fernflower/Vineflower can output a JAR containing Java or Kotlin sources.
   local result_jar="$out_dir/$(basename "$jar_to_decompile")"
   if [[ -f "$result_jar" ]]; then
     local sources_dir="$out_dir/sources"
@@ -291,7 +291,7 @@ run_fernflower() {
 
   local sources_dir="$out_dir/sources"
   mkdir -p "$sources_dir"
-  count=$(find "$sources_dir" -name "*.java" | wc -l)
+  count=$(find "$sources_dir" -type f \( -name "*.java" -o -name "*.kt" \) | wc -l)
 
   # Vineflower may write sources directly into the destination folder tree instead of a result jar.
   if [[ $count -eq 0 ]]; then
@@ -299,7 +299,7 @@ run_fernflower() {
     direct_count=$(find "$out_dir" \
       -path "$sources_dir" -prune -o \
       -path "$intermediate_dir" -prune -o \
-      -name "*.java" -type f -print | wc -l)
+      -type f \( -name "*.java" -o -name "*.kt" \) -print | wc -l)
     if [[ $direct_count -gt 0 ]]; then
       while IFS= read -r -d '' entry; do
         mv "$entry" "$sources_dir"/
@@ -307,14 +307,14 @@ run_fernflower() {
         ! -name "sources" \
         ! -name "intermediate" \
         -print0)
-      count=$(find "$sources_dir" -name "*.java" | wc -l)
+      count=$(find "$sources_dir" -type f \( -name "*.java" -o -name "*.kt" \) | wc -l)
     fi
   fi
 
   # Clean up intermediate dex2jar output
   if [[ $count -gt 0 ]]; then
     echo "Fernflower output: $sources_dir/"
-    echo "Java files decompiled by Fernflower: $count"
+    echo "Java/Kotlin files decompiled by Fernflower: $count"
     if [[ -n "${converted_jar:-}" ]] && [[ -f "${converted_jar:-}" ]]; then
       rm -f "$converted_jar"
     fi
@@ -322,16 +322,16 @@ run_fernflower() {
       rmdir "$intermediate_dir" 2>/dev/null || true
     fi
     if [[ $ff_status -ne 0 ]]; then
-      echo "Warning: Fernflower/Vineflower exited with status $ff_status after writing $count Java files; treating this as partial success." >&2
+      echo "Warning: Fernflower/Vineflower exited with status $ff_status after writing $count Java/Kotlin files; treating this as partial success." >&2
       return 2
     fi
     return 0
   fi
 
   if [[ -n "${converted_jar:-}" ]] && [[ -f "${converted_jar:-}" ]]; then
-    echo "Error: Fernflower/Vineflower produced no Java output. Intermediate dex2jar artifact kept at $converted_jar" >&2
+    echo "Error: Fernflower/Vineflower produced no Java/Kotlin output. Intermediate dex2jar artifact kept at $converted_jar" >&2
   else
-    echo "Error: Fernflower/Vineflower produced no Java output." >&2
+    echo "Error: Fernflower/Vineflower produced no Java/Kotlin output." >&2
   fi
 
   if [[ $ff_status -ne 0 ]]; then
@@ -460,10 +460,10 @@ decompile_single() {
         jadx_count=$(find "$out_dir/jadx/sources" -name "*.java" | wc -l)
       fi
       if [[ -d "$out_dir/fernflower/sources" ]]; then
-        ff_count=$(find "$out_dir/fernflower/sources" -name "*.java" | wc -l)
+        ff_count=$(find "$out_dir/fernflower/sources" -type f \( -name "*.java" -o -name "*.kt" \) | wc -l)
       fi
       echo "jadx:        $jadx_count Java files"
-      echo "Fernflower:  $ff_count Java files"
+      echo "Fernflower:  $ff_count Java/Kotlin files"
 
       if [[ -d "$out_dir/jadx/sources" ]]; then
         local jadx_error_files
