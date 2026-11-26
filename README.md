@@ -13,6 +13,7 @@ A Claude Code skill that decompiles Android APK/XAPK/JAR/AAR files and **extract
 - [What it does](#what-it-does)
 - [Requirements](#requirements)
 - [Installation](#installation)
+- [OpenCode support](#opencode-support)
 - [Usage](#usage)
 - [Repository Structure](#repository-structure)
 - [References](#references)
@@ -71,6 +72,21 @@ Then in Claude Code:
 /plugin marketplace add /path/to/android-reverse-engineering-skill
 /plugin install android-reverse-engineering@android-reverse-engineering-skill
 ```
+
+## OpenCode support
+
+The skill also works with [opencode](https://opencode.ai), which supports the
+same `SKILL.md` Agent Skills format. Install it with:
+
+```bash
+bash opencode/install.sh              # global (~/.config/opencode)
+bash opencode/install.sh --project    # current project only (./.opencode)
+```
+
+This installs the skill and a `/decompile` command, rewriting the
+Claude Code plugin's `${CLAUDE_PLUGIN_ROOT}` path references to the relative
+form opencode resolves. See [opencode/README.md](opencode/README.md) for
+details, verification steps and permission configuration.
 
 ## Usage
 
